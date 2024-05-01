@@ -1,29 +1,35 @@
 """Main entrypoint for the app."""
 import asyncio
+import os
 from typing import Optional, Union
 from uuid import UUID
 
 import langsmith
 from chain import ChatRequest, answer_chain
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
 from langsmith import Client
 from pydantic import BaseModel
 
+
+# Create a LangSmith client instance
 client = Client()
 
+# Create a FastAPI application instance
 app = FastAPI()
+
+# Add CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:8080")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type"],
+    expose_headers=["Content-Type"],
 )
 
-
+# Add routes for chat functionality
 add_routes(
     app,
     answer_chain,
@@ -33,6 +39,7 @@ add_routes(
 )
 
 
+# Define a Pydantic model for send feedback request body
 class SendFeedbackBody(BaseModel):
     run_id: UUID
     key: str = "user_score"
@@ -42,73 +49,116 @@ class SendFeedbackBody(BaseModel):
     comment: Optional[str] = None
 
 
+# Define a POST endpoint to send feedback
 @app.post("/feedback")
 async def send_feedback(body: SendFeedbackBody):
-    client.create_feedback(
-        body.run_id,
-        body.key,
-        score=body.score,
-        comment=body.comment,
-        feedback_id=body.feedback_id,
-    )
+    # Create feedback using the LangSmith client
+    try:
+        client.create_feedback(
+            body.run_id,
+            body.key,
+            score=body.score,
+            comment=body.comment,
+            feedback_id=body.feedback_id,
+        )
+    except langsmith.utils.LangSmithError as e:
+        # Handle LangSmithError and return a meaningful error response
+        return {
+            "result": "Failed to create feedback: " + e.detail,
+            "code": 500,
+        }
+    # Return a success response
     return {"result": "posted feedback successfully", "code": 200}
 
 
+# Define a Pydantic model for update feedback request body
 class UpdateFeedbackBody(BaseModel):
     feedback_id: UUID
     score: Union[float, int, bool, None] = None
     comment: Optional[str] = None
 
 
+# Define a PATCH endpoint to update feedback
 @app.patch("/feedback")
 async def update_feedback(body: UpdateFeedbackBody):
     feedback_id = body.feedback_id
     if feedback_id is None:
+        # Return an error response if feedback ID is missing
         return {
             "result": "No feedback ID provided",
             "code": 400,
         }
-    client.update_feedback(
-        feedback_id,
-        score=body.score,
-        comment=body.comment,
-    )
+    try:
+        # Update feedback using the LangSmith client
+        client.update_feedback(
+            feedback_id,
+            score=body.score,
+            comment=body.comment,
+        )
+    except langsmith.utils.LangSmithError as e:
+        # Handle LangSmithError and return a meaningful error response
+        return {
+            "result": "Failed to update feedback: " + e.detail,
+            "code": 500,
+        }
+    # Return a success response
     return {"result": "patched feedback successfully", "code": 200}
 
 
-# TODO: Update when async API is available
+# Define a helper function to run a blocking function asynchronously
 async def _arun(func, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(None, func, *args, **kwargs)
 
 
+# Define a helper function to get a trace URL for a LangSmith run
 async def aget_trace_url(run_id: str) -> str:
-    for i in range(5):
+    max_retries = 5
+    for i in range(max_retries):
         try:
+            # Try to read the run using the LangSmith client
             await _arun(client.read_run, run_id)
             break
         except langsmith.utils.LangSmithError:
+            # If an error occurs, wait for 1 second and retry
             await asyncio.sleep(1**i)
+    else:
+        # If all retries fail, raise an exception
+        raise HTTPException(status_code=500, detail="Failed to read run")
 
+    # Check if the run is shared
     if await _arun(client.run_is_shared, run_id):
+        # Return the shared link
         return await _arun(client.read_run_shared_link, run_id)
+    # Otherwise, share the run and return the link
     return await _arun(client.share_run, run_id)
 
 
+# Define a Pydantic model for get trace request body
 class GetTraceBody(BaseModel):
     run_id: UUID
 
 
+# Define a POST endpoint to get a trace URL
 @app.post("/get_trace")
 async def get_trace(body: GetTraceBody):
     run_id = body.run_id
     if run_id is None:
+        # Return an error response if LangSmith run ID is missing
         return {
             "result": "No LangSmith run ID provided",
             "code": 400,
         }
-    return await aget_trace_url(str(run_id))
+    try:
+        # Return the trace URL
+        return await aget_trace_url(str(run_id))
+    except HTTPException as e:
+        return {
+            "result": "HTTP Exception: " + e.detail,
+            "code": 500,
+        }
 
 
+# Run the application using Uvicorn if this is the main module
 if __name__ == "__main__":
     import uvicorn
 
