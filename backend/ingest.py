@@ -1,4 +1,5 @@
 """Load html from files, clean up, split, ingest into Weaviate."""
+
 import logging
 import os
 import re
@@ -13,14 +14,14 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.utils.html import PREFIXES_TO_IGNORE_REGEX, SUFFIXES_TO_IGNORE_REGEX
 from langchain_community.vectorstores import Weaviate
 from langchain_core.embeddings import Embeddings
-from langchain_openai import OpenAIEmbeddings
+from langchain_openai import AzureOpenAIEmbeddings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
 def get_embeddings_model() -> Embeddings:
-    return OpenAIEmbeddings(model="text-embedding-3-small", chunk_size=200)
+    return AzureOpenAIEmbeddings(azure_deployment="embedding", timeout=60.0)
 
 
 def metadata_extractor(meta: dict, soup: BeautifulSoup) -> dict:

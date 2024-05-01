@@ -2,101 +2,46 @@ import os
 from operator import itemgetter
 from typing import Dict, List, Optional, Sequence
 
-import weaviate
-from constants import WEAVIATE_DOCS_INDEX_NAME
+from elasticsearch import Elasticsearch
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from ingest import get_embeddings_model
-from langchain_anthropic import ChatAnthropic
-from langchain_community.chat_models import ChatCohere
-from langchain_community.vectorstores import Weaviate
 from langchain_core.documents import Document
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.prompts import (
-    ChatPromptTemplate,
-    MessagesPlaceholder,
-    PromptTemplate,
-)
+from langchain_core.prompts import (ChatPromptTemplate, MessagesPlaceholder,
+                                    PromptTemplate)
 from langchain_core.pydantic_v1 import BaseModel
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.runnables import (
-    ConfigurableField,
-    Runnable,
-    RunnableBranch,
-    RunnableLambda,
-    RunnablePassthrough,
-    RunnableSequence,
-    chain,
-)
-from langchain_fireworks import ChatFireworks
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
+from langchain_core.runnables import (ConfigurableField, Runnable,
+                                      RunnableBranch, RunnableLambda,
+                                      RunnablePassthrough, RunnableSequence)
+from langchain_elasticsearch import ElasticsearchStore
+from langchain_openai import AzureChatOpenAI
 from langsmith import Client
 
-RESPONSE_TEMPLATE = """\
-You are an expert programmer and problem-solver, tasked with answering any question \
-about Langchain.
+RESPONSE_TEMPLATE = """
+You are interfacing with the cplace knowledge base. Your task is to answer questions specifically about cplace using the information provided below.
+Follow these guidelines for your response:
+- **Answer Length**: Keep your answer concise and to the point. The answer should be between 50 and 200 words.
+- **Source Use**: Use only the information from the provided search results, which include URLs and content. Do not introduce external data.
+- **Tone and Style**: Maintain an unbiased, journalistic tone. Your answer should merge information from different sources coherently.
+- **Citation**: Use the [${{number}}] notation for citations. Place these citations at the end of the sentence or the relevant paragraph. Write separate answers for queries that involve different entities with the same name.
+- **Formatting**: Use bullet points to structure your answer, which aids in readability.
+- **Handling Uncertainty**: If the information at hand does not fully answer the question, state clearly why a complete answer cannot be provided instead of making assumptions or fabricating responses.
 
-Generate a comprehensive and informative answer of 80 words or less for the \
-given question based solely on the provided search results (URL and content). You must \
-only use information from the provided search results. Use an unbiased and \
-journalistic tone. Combine search results together into a coherent answer. Do not \
-repeat text. Cite search results using [${{number}}] notation. Only cite the most \
-relevant results that answer the question accurately. Place these citations at the end \
-of the sentence or paragraph that reference them - do not put them all at the end. If \
-different results refer to different entities within the same name, write separate \
-answers for each entity.
-
-You should use bullet points in your answer for readability. Put citations where they apply
-rather than putting them all at the end.
-
-If there is nothing in the context relevant to the question at hand, just say "Hmm, \
-I'm not sure." Don't try to make up an answer.
-
-Anything between the following `context`  html blocks is retrieved from a knowledge \
-bank, not part of the conversation with the user. 
-
+### Context for the Query:
 <context>
-    {context} 
+{context}
 <context/>
 
-REMEMBER: If there is no relevant information within the context, just say "Hmm, I'm \
-not sure." Don't try to make up an answer. Anything between the preceding 'context' \
-html blocks is retrieved from a knowledge bank, not part of the conversation with the \
-user.\
-"""
-
-COHERE_RESPONSE_TEMPLATE = """\
-You are an expert programmer and problem-solver, tasked with answering any question \
-about Langchain.
-
-Generate a comprehensive and informative answer of 80 words or less for the \
-given question based solely on the provided search results (URL and content). You must \
-only use information from the provided search results. Use an unbiased and \
-journalistic tone. Combine search results together into a coherent answer. Do not \
-repeat text. Cite search results using [${{number}}] notation. Only cite the most \
-relevant results that answer the question accurately. Place these citations at the end \
-of the sentence or paragraph that reference them - do not put them all at the end. If \
-different results refer to different entities within the same name, write separate \
-answers for each entity.
-
-You should use bullet points in your answer for readability. Put citations where they apply
-rather than putting them all at the end.
-
-If there is nothing in the context relevant to the question at hand, just say "Hmm, \
-I'm not sure." Don't try to make up an answer.
-
-REMEMBER: If there is no relevant information within the context, just say "Hmm, I'm \
-not sure." Don't try to make up an answer. Anything between the preceding 'context' \
-html blocks is retrieved from a knowledge bank, not part of the conversation with the \
-user.\
+Note: All information between the 'context' HTML tags comes from the knowledge base and is not part of this conversation.
 """
 
 REPHRASE_TEMPLATE = """\
 Given the following conversation and a follow up question, rephrase the follow up \
-question to be a standalone question.
+question to be a standalone question, preserving the original language.
 
 Chat History:
 {chat_history}
@@ -109,38 +54,46 @@ client = Client()
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:8080")],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH"],
+    allow_headers=["Content-Type"],
+    expose_headers=["Content-Type"],
 )
-
-
-WEAVIATE_URL = os.environ["WEAVIATE_URL"]
-WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
 
 
 class ChatRequest(BaseModel):
     question: str
     chat_history: Optional[List[Dict[str, str]]]
 
-
 def get_retriever() -> BaseRetriever:
-    weaviate_client = weaviate.Client(
-        url=WEAVIATE_URL,
-        auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
-    )
-    weaviate_client = Weaviate(
-        client=weaviate_client,
-        index_name=WEAVIATE_DOCS_INDEX_NAME,
-        text_key="text",
-        embedding=get_embeddings_model(),
-        by_text=False,
-        attributes=["source", "title"],
-    )
-    return weaviate_client.as_retriever(search_kwargs=dict(k=6))
+    """
+    Initializes and returns a retriever based on Elasticsearch for querying documents.
 
+    This function configures an Elasticsearch client connected to a specified index.
+    The retriever uses this setup to query documents based on text queries,
+    specifically retrieving document attributes like source and title for each search result.
+
+    Returns:
+        An instance of BaseRetriever configured to use Elasticsearch.
+    """
+
+    # Initialize Elasticsearch client
+    es_client = Elasticsearch(
+        hosts=os.getenv("ELASTICSEARCH_URL"),
+        api_key=os.getenv("ELASTICSEARCH_API_KEY"),
+        request_timeout=60,
+        max_retries=2,
+    )
+
+    # Create an ElasticsearchStore with the specified index and query attributes
+    es_store = ElasticsearchStore(
+        es_connection=es_client,
+        embedding=get_embeddings_model(),
+        index_name=os.getenv("ELASTICSEARCH_INDEX_NAME"),
+    )
+
+    return es_store.as_retriever(search_kwargs=dict(k=6))
 
 def create_retriever_chain(
     llm: LanguageModelLike, retriever: BaseRetriever
@@ -206,26 +159,11 @@ def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
     )
     default_response_synthesizer = prompt | llm
 
-    cohere_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", COHERE_RESPONSE_TEMPLATE),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{question}"),
-        ]
-    )
-
-    @chain
-    def cohere_response_synthesizer(input: dict) -> RunnableSequence:
-        return cohere_prompt | llm.bind(source_documents=input["docs"])
-
     response_synthesizer = (
         default_response_synthesizer.configurable_alternatives(
             ConfigurableField("llm"),
             default_key="openai_gpt_3_5_turbo",
-            anthropic_claude_3_sonnet=default_response_synthesizer,
-            fireworks_mixtral=default_response_synthesizer,
-            google_gemini_pro=default_response_synthesizer,
-            cohere_command=cohere_response_synthesizer,
+            openai_gpt_4_turbo=default_response_synthesizer,
         )
         | StrOutputParser()
     ).with_config(run_name="GenerateResponse")
@@ -235,44 +173,29 @@ def create_chain(llm: LanguageModelLike, retriever: BaseRetriever) -> Runnable:
         | response_synthesizer
     )
 
+# Initialize AzureChatOpenAI models for different versions
+gpt_3_5 = AzureChatOpenAI(
+    azure_deployment="gpt-35-turbo",
+    model_name="gpt-3-5-turbo",
+    model_version="1106",
+    temperature=0,
+    streaming=True,
+)
+gpt_4 = AzureChatOpenAI(
+    azure_deployment="gpt-4",
+    model_name="gpt-4-turbo",
+    model_version="1106-Preview",
+    temperature=0,
+    streaming=True,
+)
 
-gpt_3_5 = ChatOpenAI(model="gpt-3.5-turbo-0125", temperature=0, streaming=True)
-claude_3_sonnet = ChatAnthropic(
-    model="claude-3-sonnet-20240229",
-    temperature=0,
-    max_tokens=4096,
-    anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY", "not_provided"),
-)
-fireworks_mixtral = ChatFireworks(
-    model="accounts/fireworks/models/mixtral-8x7b-instruct",
-    temperature=0,
-    max_tokens=16384,
-    fireworks_api_key=os.environ.get("FIREWORKS_API_KEY", "not_provided"),
-)
-gemini_pro = ChatGoogleGenerativeAI(
-    model="gemini-pro",
-    temperature=0,
-    max_tokens=16384,
-    convert_system_message_to_human=True,
-    google_api_key=os.environ.get("GOOGLE_API_KEY", "not_provided"),
-)
-cohere_command = ChatCohere(
-    model="command",
-    temperature=0,
-    cohere_api_key=os.environ.get("COHERE_API_KEY", "not_provided"),
-)
 llm = gpt_3_5.configurable_alternatives(
     # This gives this field an id
     # When configuring the end runnable, we can then use this id to configure this field
     ConfigurableField(id="llm"),
     default_key="openai_gpt_3_5_turbo",
-    anthropic_claude_3_sonnet=claude_3_sonnet,
-    fireworks_mixtral=fireworks_mixtral,
-    google_gemini_pro=gemini_pro,
-    cohere_command=cohere_command,
-).with_fallbacks(
-    [gpt_3_5, claude_3_sonnet, fireworks_mixtral, gemini_pro, cohere_command]
-)
+    openai_gpt_4_turbo=gpt_4,
+).with_fallbacks([gpt_3_5, gpt_4])
 
 retriever = get_retriever()
 answer_chain = create_chain(llm, retriever)
