@@ -1,0 +1,17 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install poetry and project dependencies in one layer to improve build performance.
+COPY ./pyproject.toml ./poetry.lock* /app
+COPY ./backend/*.py /app/backend/
+
+RUN set -e;\
+  pip install poetry; \
+  poetry config virtualenvs.create false; \
+  poetry install --no-interaction --no-ansi --no-root; \
+  groupadd -r appuser;\
+  useradd -r -g appuser -d /app -s /sbin/nologin appuser; \
+  chown -R appuser:appuser /app
+
+CMD ["uvicorn", "--app-dir=/app/backend", "main:app", "--host", "0.0.0.0", "--port", "8080"]
