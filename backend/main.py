@@ -1,4 +1,5 @@
 """Main entrypoint for the app."""
+
 import asyncio
 import os
 from typing import Optional, Union
@@ -11,7 +12,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from langserve import add_routes
 from langsmith import Client
 from pydantic import BaseModel
-
 
 # Create a LangSmith client instance
 client = Client()
