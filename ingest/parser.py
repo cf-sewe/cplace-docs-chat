@@ -3,7 +3,6 @@ from typing import Generator
 
 from bs4 import BeautifulSoup, Doctype, NavigableString, Tag
 
-
 def langchain_docs_extractor(soup: BeautifulSoup) -> str:
     # Remove all the tags that are not meaningful for the extraction.
     SCAPE_TAGS = ["nav", "footer", "aside", "script", "style"]

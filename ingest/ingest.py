@@ -1,20 +1,20 @@
-"""Load html from files, clean up, split, ingest into Weaviate."""
+"""Load markdown from files, scapes HTML, and performs clean up, split, ingest into Elasticsearch."""
 
 import logging
 import os
 import re
-from parser import langchain_docs_extractor
 
-import weaviate
 from bs4 import BeautifulSoup, SoupStrainer
-from constants import WEAVIATE_DOCS_INDEX_NAME
+from elasticsearch import Elasticsearch
 from langchain.document_loaders import RecursiveUrlLoader, SitemapLoader
 from langchain.indexes import SQLRecordManager, index
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.utils.html import PREFIXES_TO_IGNORE_REGEX, SUFFIXES_TO_IGNORE_REGEX
-from langchain_community.vectorstores import Weaviate
 from langchain_core.embeddings import Embeddings
+from langchain_elasticsearch import ElasticsearchStore
 from langchain_openai import AzureOpenAIEmbeddings
+
+from .parser import langchain_docs_extractor
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -51,7 +51,9 @@ def load_langchain_docs():
         meta_function=metadata_extractor,
     ).load()
 
-
+# https://roadmap.cplace.io/tabs/1-launched
+# https://docs.cplace.io/api-changes-en/
+# https://docs.cplace.io/lowcode/api/
 def load_langsmith_docs():
     return RecursiveUrlLoader(
         url="https://docs.smith.langchain.com/",
@@ -96,28 +98,25 @@ def load_api_docs():
 
 
 def ingest_docs():
-    WEAVIATE_URL = os.environ["WEAVIATE_URL"]
-    WEAVIATE_API_KEY = os.environ["WEAVIATE_API_KEY"]
     RECORD_MANAGER_DB_URL = os.environ["RECORD_MANAGER_DB_URL"]
 
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=4000, chunk_overlap=200)
-    embedding = get_embeddings_model()
 
-    client = weaviate.Client(
-        url=WEAVIATE_URL,
-        auth_client_secret=weaviate.AuthApiKey(api_key=WEAVIATE_API_KEY),
+    client = Elasticsearch(
+        hosts=os.getenv("ELASTICSEARCH_URL"),
+        api_key=os.getenv("ELASTICSEARCH_API_KEY"),
+        request_timeout=60,
+        max_retries=2,
     )
-    vectorstore = Weaviate(
-        client=client,
-        index_name=WEAVIATE_DOCS_INDEX_NAME,
-        text_key="text",
-        embedding=embedding,
-        by_text=False,
-        attributes=["source", "title"],
+    index_name = os.getenv("ELASTICSEARCH_INDEX_NAME")
+    vectorstore = ElasticsearchStore(
+        es_connection=client,
+        embedding=get_embeddings_model(),
+        index_name=index_name,
     )
 
     record_manager = SQLRecordManager(
-        f"weaviate/{WEAVIATE_DOCS_INDEX_NAME}", db_url=RECORD_MANAGER_DB_URL
+        f"elasticsearch/{index_name}", db_url=os.environ["RECORD_MANAGER_DB_URL"]
     )
     record_manager.create_schema()
 
