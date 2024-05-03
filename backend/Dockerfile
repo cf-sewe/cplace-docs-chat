@@ -21,7 +21,7 @@ ENV EXTERNAL_URL="https://chat.example.com" \
 WORKDIR /app
 
 # Install poetry and project dependencies in one layer to improve build performance.
-COPY ./pyproject.toml ./poetry.lock* /app
+COPY ./pyproject.toml ./poetry.lock* /app/
 COPY ./backend/*.py /app/backend/
 
 RUN set -e;\
@@ -31,5 +31,7 @@ RUN set -e;\
     groupadd -r appuser;\
     useradd -r -g appuser -d /app -s /sbin/nologin appuser; \
     chown -R appuser:appuser /app
+
+EXPOSE 8080
 
 CMD ["uvicorn", "--app-dir=/app/backend", "main:app", "--host", "0.0.0.0", "--port", "8080"]
