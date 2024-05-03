@@ -13,6 +13,30 @@ from langserve import add_routes
 from langsmith import Client
 from pydantic import BaseModel
 
+def print_env_variables():
+    # List of environment variables and their sensitivity status
+    env_vars = {
+        "EXTERNAL_URL": False,
+        "ELASTICSEARCH_URL": False,
+        "ELASTICSEARCH_API_KEY": True,
+        "ELASTICSEARCH_INDEX_NAME": False,
+        "AZURE_OPENAI_ENDPOINT": False,
+        "AZURE_OPENAI_API_KEY": True,
+        "LANGCHAIN_TRACING_V2": False,
+        "LANGCHAIN_API_KEY": True,
+        "LANGCHAIN_PROJECT": False,
+        "RECORD_MANAGER_DB_URL": False
+    }
+    print("Environment Variables:")
+    # Print each environment variable with appropriate masking for sensitive values
+    for var, is_sensitive in env_vars.items():
+        value = os.getenv(var, 'Not Defined')
+        if is_sensitive and value != 'Not Defined':
+            value = '****'
+        print(f"  {var}: {value}")
+
+print_env_variables()
+
 # Create a LangSmith client instance
 client = Client()
 
@@ -22,7 +46,7 @@ app = FastAPI()
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:8080")],
+    allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:8000")],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH"],
     allow_headers=["Content-Type"],
@@ -36,8 +60,8 @@ add_routes(
     path="/chat",
     input_type=ChatRequest,
     config_keys=["metadata", "configurable", "tags"],
+    playground_type="chat",
 )
-
 
 # Define a Pydantic model for send feedback request body
 class SendFeedbackBody(BaseModel):
@@ -110,7 +134,7 @@ async def _arun(func, *args, **kwargs):
     return await asyncio.get_running_loop().run_in_executor(None, func, *args, **kwargs)
 
 
-# Define a helper function to get a trace URL for a LangSmith run
+# Define a helper function to get a public trace URL for a LangSmith run
 async def aget_trace_url(run_id: str) -> str:
     max_retries = 5
     for i in range(max_retries):
@@ -161,5 +185,4 @@ async def get_trace(body: GetTraceBody):
 # Run the application using Uvicorn if this is the main module
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8080)

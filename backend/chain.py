@@ -4,8 +4,6 @@ from typing import Dict, List, Optional, Sequence
 
 from constants import REPHRASE_TEMPLATE, RESPONSE_TEMPLATE
 from elasticsearch import Elasticsearch
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from langchain_core import documents as lc_docs
 from langchain_core import language_models as lc_models
 from langchain_core import messages as lc_msgs
@@ -16,21 +14,7 @@ from langchain_core import retrievers as lc_retrievers
 from langchain_core import runnables as lc_runnables
 from langchain_elasticsearch import ElasticsearchStore
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
-from langsmith import Client
 
-# Initialize Langsmith client
-client = Client()
-
-# Initialize FastAPI with CORS
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:8080")],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH"],
-    allow_headers=["Content-Type"],
-    expose_headers=["Content-Type"],
-)
 
 class ChatRequest(lc_pydantic.BaseModel):
     question: str
@@ -55,8 +39,12 @@ def format_docs(docs: Sequence[lc_docs.Document]) -> str:
     """Format document sequence into doc blocks."""
     return "\n".join(f"<doc id='{i}'>{doc.page_content}</doc>" for i, doc in enumerate(docs))
 
-def serialize_history(request: ChatRequest) -> List[lc_msgs.Message]:
+def serialize_history(request) -> List[lc_msgs.BaseMessage]:
     """Convert chat history into a list of message objects, preserving the original order."""
+    print("Type of request:", type(request))
+    if isinstance(request, dict):
+        # If input is dictionary, convert to ChatRequest object
+        request = ChatRequest(**request)
     chat_history = request.chat_history or []
     converted_chat_history = []
     for message in chat_history:
@@ -66,64 +54,65 @@ def serialize_history(request: ChatRequest) -> List[lc_msgs.Message]:
             converted_chat_history.append(lc_msgs.AIMessage(content=message["ai"]))
     return converted_chat_history
 
+def create_retriever_chain(
+    llm: lc_models.LanguageModelLike, retriever: lc_retrievers.BaseRetriever
+) -> lc_runnables.Runnable:
+    CONDENSE_QUESTION_PROMPT = lc_prompts.PromptTemplate.from_template(REPHRASE_TEMPLATE)
+    # Note: Always use an efficient language model for the condense question chain
+    condense_question_chain = (
+        CONDENSE_QUESTION_PROMPT | gpt_3_5 | lc_parsers.StrOutputParser()
+    ).with_config(
+        run_name="CondenseQuestion",
+    )
+    conversation_chain = condense_question_chain | retriever
+    return lc_runnables.RunnableBranch(
+        (
+            lc_runnables.RunnableLambda(lambda x: bool(x.get("chat_history"))).with_config(
+                run_name="HasChatHistoryCheck"
+            ),
+            conversation_chain.with_config(run_name="RetrievalChainWithHistory"),
+        ),
+        (
+            lc_runnables.RunnableLambda(itemgetter("question")).with_config(
+                run_name="Itemgetter:question"
+            )
+            | retriever
+        ).with_config(run_name="RetrievalChainWithNoHistory"),
+    ).with_config(run_name="RouteDependingOnChatHistory")
 
 def create_chain(llm: lc_models.LanguageModelLike, retriever: lc_retrievers.BaseRetriever) -> lc_runnables.Runnable:
-    """
-    Creates a processing chain that integrates a language model and a document retriever to handle and respond to chat requests.
-    This chain manages retrieval of documents, formatting these documents, and generating a response based on a given template.
-
-    Args:
-        llm (lc_models.LanguageModelLike): The language model to be used for generating responses.
-        retriever (lc_retrievers.BaseRetriever): The document retriever for fetching relevant documents based on the query.
-
-    Returns:
-        lc_runnables.Runnable: A configured chain of operations to handle a chat request.
-    """
-
-    # Define a prompt template for rephrasing questions based on existing chat history
-    condense_question_prompt = lc_prompts.PromptTemplate.from_template(REPHRASE_TEMPLATE)
-
-    # Create a runnable sequence for handling queries with existing chat history
-    retrieval_chain_with_history = lc_runnables.RunnableSequence([
-        lc_runnables.RunnableLambda(lambda x: bool(x.get("chat_history"))),
-        lc_runnables.RunnablePassthrough(assign=lambda x: {
-            'chat_history': x['chat_history'],
-            'question': x['question']
-        }),
-        condense_question_prompt | gpt_3_5 | lc_parsers.StrOutputParser(),
+    retriever_chain = create_retriever_chain(
+        llm,
         retriever,
-        lc_runnables.RunnableLambda(lambda docs: format_docs(docs["docs"]))
-    ]).with_config(run_name="RetrievalChainWithHistory")
+    ).with_config(run_name="FindDocs")
+    context = (
+        lc_runnables.RunnablePassthrough.assign(docs=retriever_chain)
+        .assign(context=lambda x: format_docs(x["docs"]))
+        .with_config(run_name="RetrieveDocs")
+    )
+    prompt = lc_prompts.ChatPromptTemplate.from_messages(
+        [
+            ("system", RESPONSE_TEMPLATE),
+            lc_prompts.MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{question}"),
+        ]
+    )
+    default_response_synthesizer = prompt | llm
 
-    # Create a runnable sequence for handling queries without existing chat history
-    retrieval_chain_no_history = lc_runnables.RunnableSequence([
-        lc_runnables.RunnableLambda(itemgetter("question")),
-        retriever,
-        lc_runnables.RunnableLambda(lambda docs: format_docs(docs["docs"]))
-    ]).with_config(run_name="RetrievalChainNoHistory")
-
-    # Configure response synthesizer
-    response_synthesizer = lc_runnables.RunnablePassthrough(assign=lambda context: {
-        "chat_history": serialize_history(context['request']),
-        "formatted_docs": context['formatted_docs']
-    }) | lc_runnables.RunnableBranch(
-        lc_runnables.RunnableLambda(lambda x: x),
-        lc_runnables.RunnableSequence([
-            lc_prompts.ChatPromptTemplate.from_messages([
-                ("system", RESPONSE_TEMPLATE),
-                lc_prompts.MessagesPlaceholder(variable_name="chat_history"),
-                ("human", "{question}"),
-            ]),
-            llm,
-            lc_parsers.StrOutputParser()
-        ])
+    response_synthesizer = (
+        default_response_synthesizer.configurable_alternatives(
+            lc_runnables.ConfigurableField("llm"),
+            default_key="openai_gpt_3_5_turbo",
+            openai_gpt_4_turbo=default_response_synthesizer
+        )
+        | lc_parsers.StrOutputParser()
     ).with_config(run_name="GenerateResponse")
+    return (
+        lc_runnables.RunnablePassthrough.assign(chat_history=serialize_history)
+        | context
+        | response_synthesizer
+    )
 
-    # Combine all elements into a single processing chain
-    return lc_runnables.RunnableBranch(
-        (retrieval_chain_with_history, response_synthesizer),
-        (retrieval_chain_no_history, response_synthesizer)
-    ).with_config(run_name="CompleteChatHandlingChain")
 
 # Model initialization for AzureChatOpenAI
 gpt_3_5 = AzureChatOpenAI(
@@ -140,5 +129,4 @@ llm = gpt_3_5.configurable_alternatives(
     openai_gpt_4_turbo=gpt_4,
 ).with_fallbacks([gpt_3_5, gpt_4])
 
-retriever = get_retriever()
-answer_chain = create_chain(llm, retriever)
+answer_chain = create_chain(llm, get_retriever())
