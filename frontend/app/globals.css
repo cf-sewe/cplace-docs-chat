@@ -2,18 +2,34 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-text: #f8f8f8; /* Bright text color */
+  --color-background: #131318; /* Dark background color */
+  --color-link: #2d7bd4; /* Default link color */
+  --color-code: #ffa500; /* Code color */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #131318; /* Dark text color */
+    --color-background: #f8f8f8; /* Bright background color */
+    --color-link: #2d7bd4; /* Default link color */
+    --color-code: #ffa500; /* Code color */
+  }
+}
+
 body {
-  color: #f8f8f8;
-  background: #131318;
+  color: var(--color-text);
+  background: var(--color-background);
 }
 
 body input,
 body textarea {
-  color: black;
+  color: var(--color-text);
 }
 
 a {
-  color: #2d7bd4;
+  color: var(--color-link);
 }
 
 a:hover {
@@ -25,7 +41,7 @@ p {
 }
 
 code {
-  color: #ffa500;
+  color: var(--color-code);
 }
 
 li {
