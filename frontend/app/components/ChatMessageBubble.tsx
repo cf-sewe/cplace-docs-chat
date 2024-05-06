@@ -1,6 +1,6 @@
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
-import { emojisplosion } from "emojisplosion";
+import { emojiBlast } from "emoji-blast";
 import { useState, useRef } from "react";
 import * as DOMPurify from "dompurify";
 import { SourceBubble, Source } from "./SourceBubble";
@@ -240,7 +240,7 @@ export function ChatMessageBubble(props: {
       resolvedButton.classList.remove("animate-ping");
     }, 500);
 
-    emojisplosion({
+    emojiBlast({
       emojiCount: 10,
       uniqueness: 1,
       position() {
