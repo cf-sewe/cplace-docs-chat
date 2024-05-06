@@ -16,6 +16,10 @@ RUN set -e; \
 
 # Rebuild the source code only when needed
 FROM base AS builder
+
+# URL used by Frontend to connect to the API
+ARG NEXT_PUBLIC_API_BASE_URL=https://chat-api.example.com
+
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
