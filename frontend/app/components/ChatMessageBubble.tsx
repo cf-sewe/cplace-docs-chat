@@ -36,6 +36,7 @@ export type Feedback = {
   comment?: string;
 };
 
+// Function to filter duplicate sources based on their URLs
 const filterSources = (sources: Source[]) => {
   const filtered: Source[] = [];
   const urlMap = new Map<string, number>();
@@ -205,8 +206,7 @@ export function ChatMessageBubble(props: {
   };
 
   const sources = props.message.sources ?? [];
-  const { filtered: filteredSources, indexMap: sourceIndexMap } =
-    filterSources(sources);
+  const { filtered: filteredSources, indexMap: sourceIndexMap } = filterSources(sources);
 
   // Use an array of highlighted states as a state since React
   // complains when creating states in a loop

@@ -41,7 +41,10 @@ print_env_variables()
 client = Client()
 
 # Create a FastAPI application instance
-app = FastAPI()
+app = FastAPI(
+    docs_url=None, # Disable docs (Swagger UI)
+    redoc_url=None, # Disable redoc
+)
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(
@@ -61,6 +64,7 @@ add_routes(
     input_type=ChatRequest,
     config_keys=["metadata", "configurable", "tags"],
     playground_type="chat",
+    disable_endpoints=["playground"],
 )
 
 # Define a Pydantic model for send feedback request body
