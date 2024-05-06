@@ -34,7 +34,7 @@ LABEL org.opencontainers.image.title="cplace-docs-chat" \
       org.opencontainers.image.vendor="collaboration Factory AG" \
       org.opencontainers.image.authors="operations@cplace.com"
 
-
+WORKDIR /app
 
 ENV NODE_ENV=production \
   HOSTNAME="0.0.0.0" \
