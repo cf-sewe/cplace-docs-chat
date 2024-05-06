@@ -27,13 +27,7 @@ import { Select, Link } from "@chakra-ui/react";
 import { Source } from "./SourceBubble";
 import { apiBaseUrl } from "../utils/constants";
 
-const MODEL_TYPES = [
-  "openai_gpt_3_5_turbo",
-  "openai_gpt_4_turbo"
-];
-
-const defaultLlmValue =
-  MODEL_TYPES[Math.floor(Math.random() * MODEL_TYPES.length)];
+const defaultLlmValue = "openai_gpt_3_5_turbo"
 
 export function ChatWindow(props: { conversationId: string }) {
   const conversationId = props.conversationId;
