@@ -64,7 +64,7 @@ add_routes(
     input_type=ChatRequest,
     config_keys=["metadata", "configurable", "tags"],
     playground_type="chat",
-    disable_endpoints=["playground"],
+    disabled_endpoints=["playground"]
 )
 
 # Define a Pydantic model for send feedback request body
