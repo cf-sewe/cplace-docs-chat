@@ -10,7 +10,7 @@ WORKDIR /app
 
 COPY yarn.lock /app
 RUN set -e; \
-  if [ -f yarn.lock ]; then yarn --frozen-lockfile; \
+  if [ -f yarn.lock ]; then yarn install --frozen-lockfile; \
   else echo "Lockfile not found." && exit 1; \
   fi
 
@@ -21,6 +21,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 RUN set -e; \
+  yarn install --frozen-lockfile; \
   yarn next telemetry disable; \
   if [ -f yarn.lock ]; then yarn run build; \
   else echo "Lockfile not found." && exit 1; \
@@ -46,7 +47,7 @@ RUN set -e; \
   mkdir .next; \
   chown nextjs:nodejs .next
 
-COPY --from=builder /app/public ./public
+COPY --from=builder  --chown=nextjs:nodejs /app/public ./public
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing
