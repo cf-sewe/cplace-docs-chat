@@ -51,7 +51,7 @@ export function ChatWindow(props: { conversationId: string }) {
   useEffect(() => {
     setLlm(searchParams.get("llm") ?? defaultLlmValue);
     setLlmIsLoading(false);
-  }, []);
+  }, [searchParams]);
 
   const [chatHistory, setChatHistory] = useState<
     { human: string; ai: string }[]
@@ -148,7 +148,7 @@ export function ChatWindow(props: { conversationId: string }) {
         if (Array.isArray(streamedResponse?.streamed_output)) {
           accumulatedMessage = streamedResponse.streamed_output.join("");
         }
-        const parsedResult = marked.parse(accumulatedMessage);
+        const parsedResult = await marked.parse(accumulatedMessage);
 
         setMessages((prevMessages) => {
           let newMessages = [...prevMessages];
