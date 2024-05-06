@@ -12,6 +12,8 @@ Therefore, the LLM will be configured to respond concisely (up to 200 words) and
 
 ## Components
 
+![cplace Docs Chat Overview](cplace-docs-chat-overview.png)
+
 - Elasticsearch 8.x hosted on IDP Docker Swarm
 - LangChain Chat API and Frontend hosted on IDP Docker Swarm
 - An ingestion script that reads the cplace documentation and indexes it into Elasticsearch

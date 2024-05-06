@@ -6,7 +6,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "cplace Docs Chat",
-  description: "Chatbot for cplace Documentation",
+  description: "Chat Interface to the cplace Documentation",
 };
 
 export default function RootLayout({

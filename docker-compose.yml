@@ -1,0 +1,62 @@
+---
+services:
+  frontend:
+    image: "cplace-docs-chat:latest"
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.hostname == test-server-2
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.chat.entrypoints=websecure"
+        - "traefik.http.routers.chat.rule=Host(`docs-chat.example.com`)"
+        - "traefik.http.services.chat.loadbalancer.server.port=3000"
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          memory: 64M
+      restart_policy:
+        condition: any
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+    networks:
+      - apps
+
+  backend:
+    image: "cplace-docs-chat-api:latest"
+    env_file: .env
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+          - node.hostname == test-server-2
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.chat-api.entrypoints=websecure"
+        - "traefik.http.routers.chat-api.rule=Host(`docs-chat-api.example.com`)"
+        - "traefik.http.services.chat-api.loadbalancer.server.port=8080"
+      resources:
+        limits:
+          cpus: "1"
+          memory: 512M
+        reservations:
+          memory: 64M
+      restart_policy:
+        condition: any
+        delay: 10s
+        max_attempts: 3
+        window: 120s
+    networks:
+      - apps
+
+networks:
+  apps:
+    external: true
