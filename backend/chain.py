@@ -103,7 +103,7 @@ def create_chain(llm: lc_models.LanguageModelLike, retriever: lc_retrievers.Base
         default_response_synthesizer.configurable_alternatives(
             lc_runnables.ConfigurableField("llm"),
             default_key="openai_gpt_3_5_turbo",
-            openai_gpt_4_turbo=default_response_synthesizer
+            openai_gpt_4o=default_response_synthesizer
         )
         | lc_parsers.StrOutputParser()
     ).with_config(run_name="GenerateResponse")
@@ -119,14 +119,14 @@ gpt_3_5 = AzureChatOpenAI(
     azure_deployment="gpt-35-turbo", model_name="gpt-3-5-turbo", model_version="1106", temperature=0, streaming=True
 )
 gpt_4 = AzureChatOpenAI(
-    azure_deployment="gpt-4", model_name="gpt-4-turbo", model_version="1106-Preview", temperature=0, streaming=True
+    azure_deployment="gpt-4o", model_name="gpt-4o", model_version="2024-05-13", temperature=0, streaming=True, timeout=120
 )
 
 # Configurable language model alternative setup
 llm = gpt_3_5.configurable_alternatives(
     lc_runnables.ConfigurableField(id="llm"),
     default_key="openai_gpt_3_5_turbo",
-    openai_gpt_4_turbo=gpt_4,
+    openai_gpt_4o=gpt_4,
 ).with_fallbacks([gpt_3_5, gpt_4])
 
 answer_chain = create_chain(llm, get_retriever())

@@ -38,12 +38,15 @@ export function ChatWindow(props: { conversationId: string }) {
   const [messages, setMessages] = useState<Array<Message>>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [llm, setLlm] = useState(
-    searchParams.get("llm") ?? "openai_gpt_3_5_turbo",
-  );
+  // Handle the case when searchParams is null
+  const llmInitial = searchParams ? searchParams.get("llm") : null;
+  const [llm, setLlm] = useState(llmInitial ?? defaultLlmValue);
   const [llmIsLoading, setLlmIsLoading] = useState(true);
+  // Update effect to handle null searchParams safely
   useEffect(() => {
-    setLlm(searchParams.get("llm") ?? defaultLlmValue);
+    if (searchParams) {
+      setLlm(searchParams.get("llm") ?? defaultLlmValue);
+    }
     setLlmIsLoading(false);
   }, [searchParams]);
 
@@ -90,7 +93,7 @@ export function ChatWindow(props: { conversationId: string }) {
         validLanguage || "plaintext",
         code,
       ).value;
-      return `<pre class="highlight bg-gray-700" style="padding: 5px; border-radius: 5px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; display: block; line-height: 1.2"><code class="${language}" style="color: #d6e2ef; font-size: 12px; ">${highlightedCode}</code></pre>`;
+      return `<pre class="highlight bg-gray-700" style="padding: 5px; border-radius: 5px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; display: block; line-height: 1.2"><code class="${language}"; font-size: 12px; ">${highlightedCode}</code></pre>`;
     };
     marked.setOptions({ renderer });
     try {
@@ -99,7 +102,7 @@ export function ChatWindow(props: { conversationId: string }) {
       const remoteChain = new RemoteRunnable({
         url: apiBaseUrl + "/chat",
         options: {
-          timeout: 60000,
+          timeout: 120000,
         },
       });
       const llmDisplayName = llm ?? "openai_gpt_3_5_turbo";
@@ -209,29 +212,27 @@ export function ChatWindow(props: { conversationId: string }) {
           fontSize={messages.length > 0 ? "2xl" : "3xl"}
           fontWeight={"medium"}
           mb={1}
-          color={"white"}
         >
           cplace Docs Chat
         </Heading>
         {messages.length > 0 ? (
-          <Heading fontSize="md" fontWeight={"normal"} mb={1} color={"white"}>
+          <Heading fontSize="md" fontWeight={"normal"} mb={1}>
             We appreciate feedback!
           </Heading>
         ) : (
           <Heading
             fontSize="xl"
             fontWeight={"normal"}
-            color={"white"}
             marginTop={"10px"}
             textAlign={"center"}
           >
             Ask me anything about cplace&apos;s{" "}
-            <Link href="https://docs.cplace.io/" color={"blue.200"}>
+            <Link href="https://docs.cplace.io/">
               official documentation!
             </Link>
           </Heading>
         )}
-        <div className="text-white flex flex-wrap items-center mt-4">
+        <div className="flex flex-wrap items-center mt-4">
           <div className="flex items-center mb-2">
             <span className="shrink-0 mr-2">Powered by</span>
             {llmIsLoading ? (
@@ -246,7 +247,7 @@ export function ChatWindow(props: { conversationId: string }) {
                 width={"240px"}
               >
                 <option value="openai_gpt_3_5_turbo">GPT-3.5-Turbo</option>
-                <option value="openai_gpt_4_turbo">GPT-4-Turbo</option>
+                <option value="openai_gpt_4o">GPT-4o</option>
               </Select>
             )}
           </div>
@@ -278,8 +279,6 @@ export function ChatWindow(props: { conversationId: string }) {
           maxRows={5}
           marginRight={"56px"}
           placeholder="Ask me a question..."
-          textColor={"white"}
-          borderColor={"rgb(58, 58, 61)"}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
@@ -293,7 +292,6 @@ export function ChatWindow(props: { conversationId: string }) {
         />
         <InputRightElement h="full">
           <IconButton
-            colorScheme="blue"
             rounded={"full"}
             aria-label="Send"
             icon={isLoading ? <Spinner /> : <ArrowUpIcon />}
@@ -311,7 +309,7 @@ export function ChatWindow(props: { conversationId: string }) {
           <a
             href="https://github.com/cf-sewe/cplace-docs-chat"
             target="_blank"
-            className="text-white flex items-center"
+            className="flex items-center"
           >
             <img alt="GitHub Logo" src="/images/github-mark.svg" className="h-4 mr-1" />
             <span>View Source</span>
