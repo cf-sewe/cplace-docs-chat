@@ -21,8 +21,9 @@ beautifulsoup4 = "^4.12"
 lxml = "^5.2"
 pillow = "^10.3"
 tiktoken = "^0.6"
-elasticsearch = "^8.13"
+elasticsearch = "^8.14"
 langchain-elasticsearch = "^0.1"
+tenacity = "^8.4"
 
 [tool.poetry.group.lint.dependencies]
 ruff = "^0.4"
