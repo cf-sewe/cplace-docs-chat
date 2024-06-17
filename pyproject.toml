@@ -23,7 +23,7 @@ pillow = "^10.3"
 tiktoken = "^0.6"
 elasticsearch = "^8.14"
 langchain-elasticsearch = "^0.1"
-tenacity = "^8.4"
+tenacity = ">=8.2.3,<8.4.0"
 
 [tool.poetry.group.lint.dependencies]
 ruff = "^0.4"
