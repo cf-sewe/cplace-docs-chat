@@ -24,8 +24,7 @@ def print_env_variables():
         "AZURE_OPENAI_API_KEY": True,
         "LANGCHAIN_TRACING_V2": False,
         "LANGCHAIN_API_KEY": True,
-        "LANGCHAIN_PROJECT": False,
-        "RECORD_MANAGER_DB_URL": False
+        "LANGCHAIN_PROJECT": False
     }
     print("Environment Variables:")
     # Print each environment variable with appropriate masking for sensitive values
@@ -42,9 +41,12 @@ client = Client()
 
 # Create a FastAPI application instance
 app = FastAPI(
+    title="cplace Chatbot API",
+    version="1.0",
     docs_url=None, # Disable docs (Swagger UI)
     redoc_url=None, # Disable redoc
 )
+
 
 # Add CORS middleware to allow cross-origin requests
 app.add_middleware(
