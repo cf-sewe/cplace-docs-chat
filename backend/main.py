@@ -53,7 +53,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[os.getenv("EXTERNAL_URL", "http://localhost:3000")],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH"],
+    allow_methods=["GET", "POST", "PUT", "PATCH"],
     allow_headers=["Content-Type"],
     expose_headers=["Content-Type"],
 )
@@ -66,7 +66,10 @@ add_routes(
     input_type=ChatRequest,
     config_keys=["metadata", "configurable", "tags"],
     playground_type="chat",
-    disabled_endpoints=["playground"]
+    disabled_endpoints=[],
+    include_callback_events=False,
+    enable_feedback_endpoint=True,
+    enable_public_trace_link_endpoint=True,
 )
 
 # Define a Pydantic model for send feedback request body
@@ -101,91 +104,57 @@ async def send_feedback(body: SendFeedbackBody):
     return {"result": "posted feedback successfully", "code": 200}
 
 
-# Define a Pydantic model for update feedback request body
-class UpdateFeedbackBody(BaseModel):
-    feedback_id: UUID
-    score: Union[float, int, bool, None] = None
-    comment: Optional[str] = None
+# # Define a helper function to run a blocking function asynchronously
+# async def _arun(func, *args, **kwargs):
+#     return await asyncio.get_running_loop().run_in_executor(None, func, *args, **kwargs)
 
 
-# Define a PATCH endpoint to update feedback
-@app.patch("/feedback")
-async def update_feedback(body: UpdateFeedbackBody):
-    feedback_id = body.feedback_id
-    if feedback_id is None:
-        # Return an error response if feedback ID is missing
-        return {
-            "result": "No feedback ID provided",
-            "code": 400,
-        }
-    try:
-        # Update feedback using the LangSmith client
-        client.update_feedback(
-            feedback_id,
-            score=body.score,
-            comment=body.comment,
-        )
-    except langsmith.utils.LangSmithError as e:
-        # Handle LangSmithError and return a meaningful error response
-        return {
-            "result": "Failed to update feedback: " + e.detail,
-            "code": 500,
-        }
-    # Return a success response
-    return {"result": "patched feedback successfully", "code": 200}
+# # Define a helper function to get a public trace URL for a LangSmith run
+# async def aget_trace_url(run_id: str) -> str:
+#     max_retries = 5
+#     for i in range(max_retries):
+#         try:
+#             # Try to read the run using the LangSmith client
+#             await _arun(client.read_run, run_id)
+#             break
+#         except langsmith.utils.LangSmithError:
+#             # If an error occurs, wait for 1 second and retry
+#             await asyncio.sleep(1**i)
+#     else:
+#         # If all retries fail, raise an exception
+#         raise HTTPException(status_code=500, detail="Failed to read run")
+
+#     # Check if the run is shared
+#     if await _arun(client.run_is_shared, run_id):
+#         # Return the shared link
+#         return await _arun(client.read_run_shared_link, run_id)
+#     # Otherwise, share the run and return the link
+#     return await _arun(client.share_run, run_id)
 
 
-# Define a helper function to run a blocking function asynchronously
-async def _arun(func, *args, **kwargs):
-    return await asyncio.get_running_loop().run_in_executor(None, func, *args, **kwargs)
-
-
-# Define a helper function to get a public trace URL for a LangSmith run
-async def aget_trace_url(run_id: str) -> str:
-    max_retries = 5
-    for i in range(max_retries):
-        try:
-            # Try to read the run using the LangSmith client
-            await _arun(client.read_run, run_id)
-            break
-        except langsmith.utils.LangSmithError:
-            # If an error occurs, wait for 1 second and retry
-            await asyncio.sleep(1**i)
-    else:
-        # If all retries fail, raise an exception
-        raise HTTPException(status_code=500, detail="Failed to read run")
-
-    # Check if the run is shared
-    if await _arun(client.run_is_shared, run_id):
-        # Return the shared link
-        return await _arun(client.read_run_shared_link, run_id)
-    # Otherwise, share the run and return the link
-    return await _arun(client.share_run, run_id)
-
-
-# Define a Pydantic model for get trace request body
-class GetTraceBody(BaseModel):
-    run_id: UUID
+# # Define a Pydantic model for get trace request body
+# class GetTraceBody(BaseModel):
+#     run_id: UUID
 
 
 # Define a POST endpoint to get a trace URL
-@app.post("/get_trace")
-async def get_trace(body: GetTraceBody):
-    run_id = body.run_id
-    if run_id is None:
-        # Return an error response if LangSmith run ID is missing
-        return {
-            "result": "No LangSmith run ID provided",
-            "code": 400,
-        }
-    try:
-        # Return the trace URL
-        return await aget_trace_url(str(run_id))
-    except HTTPException as e:
-        return {
-            "result": "HTTP Exception: " + e.detail,
-            "code": 500,
-        }
+# @app.post("/get_trace")
+# async def get_trace(body: GetTraceBody):
+#     run_id = body.run_id
+#     if run_id is None:
+#         # Return an error response if LangSmith run ID is missing
+#         return {
+#             "result": "No LangSmith run ID provided",
+#             "code": 400,
+#         }
+#     try:
+#         # Return the trace URL
+#         return await aget_trace_url(str(run_id))
+#     except HTTPException as e:
+#         return {
+#             "result": "HTTP Exception: " + e.detail,
+#             "code": 500,
+#         }
 
 
 # Run the application using Uvicorn if this is the main module

@@ -2,34 +2,18 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-text: #f8f8f8; /* Bright text color */
-  --color-background: #131318; /* Dark background color */
-  --color-link: #2d7bd4; /* Default link color */
-  --color-code: #ffa500; /* Code color */
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-text: #131318; /* Dark text color */
-    --color-background: #f8f8f8; /* Bright background color */
-    --color-link: #2d7bd4; /* Default link color */
-    --color-code: #ffa500; /* Code color */
-  }
-}
-
 body {
-  color: var(--color-text);
-  background: var(--color-background);
+  color: #2a2424;
+  background: #cfcfdd;
 }
 
 body input,
 body textarea {
-  color: var(--color-text);
+  color: black;
 }
 
 a {
-  color: var(--color-link);
+  color: #2d7bd4;
 }
 
 a:hover {
@@ -41,9 +25,13 @@ p {
 }
 
 code {
-  color: var(--color-code);
+  color: #ffa500;
 }
 
 li {
   padding: 4px;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  color: #211f6b;
 }

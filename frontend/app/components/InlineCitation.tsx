@@ -17,7 +17,7 @@ export function InlineCitation(props: {
       target="_blank" // Opening the link in a new tab
       // Applying CSS classes based on whether the source is highlighted
       className={`relative bottom-1.5 text-xs border rounded px-1 ${
-        highlighted ? "bg-[rgb(58,58,61)]" : "bg-[rgb(78,78,81)]"
+        highlighted ? "bg-gray-200" : "bg-white"
       }`}
       // Handling mouse enter event
       onMouseEnter={onMouseEnter}

@@ -40,19 +40,17 @@ export function SourceBubble({
         }
       }}
       // Setting background color based on whether the source is highlighted
-      backgroundColor={highlighted ? "rgb(58, 58, 61)" : "rgb(78,78,81)"}
-      // Handling mouse enter event
+      backgroundColor={highlighted ? "primary.sky" : "primary.blue"}
       onMouseEnter={onMouseEnter}
-      // Handling mouse leave event
       onMouseLeave={onMouseLeave}
-      cursor={"pointer"} // Setting cursor to pointer
-      alignSelf={"stretch"} // Setting alignment
-      height="100%" // Setting height
-      overflow={"hidden"} // Handling overflow
+      cursor={"pointer"}
+      alignSelf={"stretch"}
+      height="100%"
+      overflow={"hidden"}
     >
       <CardBody>
-        <Heading size={"sm"} fontWeight={"normal"} color={"white"}>
-          {source.title} {/* Rendering the source title */}
+        <Heading size={"sm"} fontWeight={"normal"} color={"primary.mintLight"}>
+          {source.title}
         </Heading>
       </CardBody>
     </Card>

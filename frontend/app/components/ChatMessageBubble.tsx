@@ -2,7 +2,10 @@ import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { emojiBlast } from "emoji-blast";
 import { useState, useRef } from "react";
-import * as DOMPurify from "dompurify";
+import DOMPurify from "dompurify";
+import { marked } from 'marked';
+import hljs from "highlight.js";
+
 import { SourceBubble, Source } from "./SourceBubble";
 import {
   VStack,
@@ -10,6 +13,7 @@ import {
   Heading,
   HStack,
   Box,
+  Tooltip,
   Button,
   Divider,
   Spacer,
@@ -22,7 +26,7 @@ export type Message = {
   id: string;
   createdAt?: Date;
   content: string;
-  role: "system" | "user" | "assistant" | "function";
+  type: "system" | "human" | "ai" | "function";
   runId?: string;
   sources?: Source[];
   name?: string;
@@ -58,60 +62,124 @@ const filterSources = (sources: Source[]) => {
   return { filtered, indexMap };
 };
 
+const markedRenderer = {
+  useNewRenderer: true,
+  renderer: {
+    paragraph({ tokens }: { tokens: any }) {
+      console.log("paragraph", tokens);
+      return `${tokens[0].text}\n`;
+    },
+    listitem({ text }: { text: string }) {
+      const parsed = marked.parseInline(text, {async: false});
+      return `➤ ${parsed}\n`;
+    },
+    code({ text, lang, escaped }: { text: string; lang?: string; escaped?: boolean }) {
+      //console.log("code", text, lang, escaped);
+      // Ensure code does not have a trailing newline
+      const code = text.replace(/\n$/, '') + '\n';
+
+      // If a language is specified, return the highlighted code but without the <pre> and <code> tags
+      const highlightedCode = hljs.highlight(code, { language: lang || 'plaintext' }).value;
+      return `<div class="highlighted-code" style="background: #d2d6d6; padding: 8px; border-radius: 5px; overflow-x: auto; font-family: monospace;">${highlightedCode}</div>\n`;
+    }
+  },
+};
+
+function postprocess(html: string) {
+  return DOMPurify.sanitize(html);
+}
+
 const createAnswerElements = (
-  content: string,
-  filteredSources: Source[],
-  sourceIndexMap: Map<number, number>,
-  highlighedSourceLinkStates: boolean[],
+  content: string, // The markdown content that will be parsed and rendered.
+  filteredSources: Source[], // The sources that need to be highlighted or referenced.
+  sourceIndexMap: Map<number, number>, // A map to match citation numbers with their respective sources.
+  highlighedSourceLinkStates: boolean[], // The current state of highlighted source links (for hover effects).
   setHighlightedSourceLinkStates: React.Dispatch<
     React.SetStateAction<boolean[]>
-  >,
+  >, // A function to update the highlight state of source links.
 ) => {
-  const matches = Array.from(content.matchAll(/\[\^?\$?{?(\d+)}?\^?\]/g));
+  // Match all inline citation patterns like [^0], [^1], etc., from the content.
+  //const matches = Array.from(content.matchAll(/\[\^?\$?{?(\d+)}?\^?\]/g));
+  const matches = Array.from(content.matchAll(/\[\^(\d+)\]/g));
+  // Array to store the final elements to render, including markdown and citations.
   const elements: JSX.Element[] = [];
+
+  // Variable to track the last processed index in the content.
   let prevIndex = 0;
 
+  // Initialize the marked renderer with syntax highlighting.
+  //const marked = new Marked(
+  //);
+
+  // Apply the custom renderer and post-processing hooks.
+  marked.use(markedRenderer);
+  marked.use({ hooks: { postprocess } });
+
+  // Iterate through the found matches of citations in the content.
   matches.forEach((match) => {
+    // Extract the source number from the citation (e.g., [^0] -> 0).
     const sourceNum = parseInt(match[1], 10);
+
+    // Find the resolved index for this source number from the sourceIndexMap.
     const resolvedNum = sourceIndexMap.get(sourceNum) ?? 10;
+
+    // If the match has a valid index and is within bounds of available sources:
     if (match.index !== null && resolvedNum < filteredSources.length) {
+      // Push the non-citation portion of the content to elements.
       elements.push(
         <span
           key={`content:${prevIndex}`}
           dangerouslySetInnerHTML={{
-            __html: DOMPurify.sanitize(content.slice(prevIndex, match.index)),
+            __html: DOMPurify.sanitize(
+              // Parse the markdown content between citations and sanitize it.
+              marked.parse(content.slice(prevIndex, match.index), { async: false }).trimEnd(),
+            ),
           }}
         ></span>,
       );
+
+      // Push the inline citation component for this source.
       elements.push(
         <InlineCitation
           key={`citation:${prevIndex}`}
-          source={filteredSources[resolvedNum]}
-          sourceNumber={resolvedNum}
-          highlighted={highlighedSourceLinkStates[resolvedNum]}
+          source={filteredSources[resolvedNum]} // The source linked to the citation.
+          sourceNumber={resolvedNum} // The source number shown in the citation.
+          highlighted={highlighedSourceLinkStates[resolvedNum]} // Whether this source is highlighted.
+          // Set highlighting on mouse enter.
           onMouseEnter={() =>
             setHighlightedSourceLinkStates(
-              filteredSources.map((_, i) => i === resolvedNum),
+              filteredSources.map((_, i) => i === resolvedNum), // Only highlight the current source.
             )
           }
+          // Remove highlighting on mouse leave.
           onMouseLeave={() =>
-            setHighlightedSourceLinkStates(filteredSources.map(() => false))
+            setHighlightedSourceLinkStates(filteredSources.map(() => false)) // Remove all highlighting.
           }
         />,
       );
+
+      // Update prevIndex to the end of the current match to continue processing the rest of the content.
       prevIndex = (match?.index ?? 0) + match[0].length;
     }
   });
+
+  // Add any remaining text after the last citation to the elements array.
   elements.push(
     <span
       key={`content:${prevIndex}`}
       dangerouslySetInnerHTML={{
-        __html: DOMPurify.sanitize(content.slice(prevIndex)),
+        __html: DOMPurify.sanitize(
+          marked.parse(content.slice(prevIndex), { async: false }).trimEnd(),
+        ),
       }}
     ></span>,
   );
+
+  // Return the final array of JSX elements, including parsed markdown and citations.
   return elements;
 };
+
+
 
 export function ChatMessageBubble(props: {
   message: Message;
@@ -119,8 +187,8 @@ export function ChatMessageBubble(props: {
   isMostRecent: boolean;
   messageCompleted: boolean;
 }) {
-  const { role, content, runId } = props.message;
-  const isUser = role === "user";
+  const { type, content, runId } = props.message;
+  const isUser = type === "human";
   const [isLoading, setIsLoading] = useState(false);
   const [traceIsLoading, setTraceIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -128,6 +196,7 @@ export function ChatMessageBubble(props: {
   const [feedbackColor, setFeedbackColor] = useState("");
   const upButtonRef = useRef(null);
   const downButtonRef = useRef(null);
+  const [publicTraceLink, setPublicTraceLink] = useState<string | null>(null);
 
   const cumulativeOffset = function (element: HTMLElement | null) {
     var top = 0,
@@ -175,11 +244,18 @@ export function ChatMessageBubble(props: {
     }
     setIsLoading(false);
   };
+
   const viewTrace = async () => {
     try {
+      if (traceIsLoading || publicTraceLink) {
+        if (publicTraceLink) {
+          window.open(publicTraceLink, "_blank");
+        }
+        return;
+      }
       setTraceIsLoading(true);
-      const response = await fetch(apiBaseUrl + "/get_trace", {
-        method: "POST",
+      const response = await fetch(apiBaseUrl + "/chat/public_trace_link", {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -188,16 +264,21 @@ export function ChatMessageBubble(props: {
         }),
       });
 
-      const data = await response.json();
-
-      if (data.code === 400) {
-        toast.error("Unable to view trace");
-        throw new Error("Unable to view trace");
-      } else {
-        const url = data.replace(/['"]+/g, "");
-        window.open(url, "_blank");
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast.error("Feedback endpoint not found.");
+        } else {
+          const errorResponse = await response.json();
+          toast.error(errorResponse.detail || "Error occurred");
+        }
         setTraceIsLoading(false);
+        return;
       }
+
+      const data = await response.json();
+      setTraceIsLoading(false);
+      setPublicTraceLink(data.public_url);
+      window.open(data.public_url, "_blank");
     } catch (e: any) {
       console.error("Error:", e);
       setTraceIsLoading(false);
@@ -208,13 +289,11 @@ export function ChatMessageBubble(props: {
   const sources = props.message.sources ?? [];
   const { filtered: filteredSources, indexMap: sourceIndexMap } = filterSources(sources);
 
-  // Use an array of highlighted states as a state since React
-  // complains when creating states in a loop
   const [highlighedSourceLinkStates, setHighlightedSourceLinkStates] = useState(
     filteredSources.map(() => false),
   );
   const answerElements =
-    role === "assistant"
+    type === "ai"
       ? createAnswerElements(
           content,
           filteredSources,
@@ -265,52 +344,69 @@ export function ChatMessageBubble(props: {
                 fontSize="lg"
                 fontWeight={"medium"}
                 mb={1}
-                color={"blue.300"}
+                color={"primary.blue"} // Update the color to use the company primary blue
                 paddingBottom={"10px"}
               >
                 Sources
               </Heading>
               <HStack spacing={"10px"} maxWidth={"100%"} overflow={"auto"}>
                 {filteredSources.map((source, index) => (
-                  <Box key={index} alignSelf={"stretch"} width={40}>
-                    <SourceBubble
-                      source={source}
-                      highlighted={highlighedSourceLinkStates[index]}
+                  // Add Tooltip around the entire Box to display the source URL when hovering
+                  <Tooltip key={index} label={source.url} placement="top" hasArrow>
+                    <Box
+                      alignSelf={"stretch"}
+                      width={40}
+                      cursor="pointer"
                       onMouseEnter={() =>
                         setHighlightedSourceLinkStates(
-                          filteredSources.map((_, i) => i === index),
+                          filteredSources.map((_, i) => i === index)
                         )
                       }
                       onMouseLeave={() =>
                         setHighlightedSourceLinkStates(
-                          filteredSources.map(() => false),
+                          filteredSources.map(() => false)
                         )
                       }
-                      runId={runId}
-                    />
-                  </Box>
+                    >
+                      <SourceBubble
+                        source={source}
+                        highlighted={highlighedSourceLinkStates[index]}
+                        onMouseEnter={() =>
+                          setHighlightedSourceLinkStates(
+                            filteredSources.map((_, i) => i === index)
+                          )
+                        }
+                        onMouseLeave={() =>
+                          setHighlightedSourceLinkStates(
+                            filteredSources.map(() => false)
+                          )
+                        }
+                        runId={runId}
+                      />
+                    </Box>
+                  </Tooltip>
                 ))}
               </HStack>
             </VStack>
           </Flex>
-
-          <Heading size="lg" fontWeight="medium" color="blue.300">
+  
+          <Heading size="lg" fontWeight="medium" color="primary.blue">
             Answer
           </Heading>
         </>
       )}
-
+  
       {isUser ? (
-        <Heading size="lg" fontWeight="medium" color="white">
+        <Heading size="lg" fontWeight="medium">
           {content}
         </Heading>
       ) : (
-        <Box className="whitespace-pre-wrap" color="white">
+        <Box className="whitespace-pre-wrap">
           {answerElements}
         </Box>
       )}
-
-      {props.message.role !== "user" &&
+  
+      {props.message.type !== "human" &&
         props.isMostRecent &&
         props.messageCompleted && (
           <HStack spacing={2}>
@@ -318,12 +414,12 @@ export function ChatMessageBubble(props: {
               ref={upButtonRef}
               size="sm"
               variant="outline"
-              colorScheme={feedback === null ? "green" : "gray"}
+              colorScheme={feedback === null ? "primary.mint" : "gray"} // Use the company mint color
               onClick={() => {
                 if (feedback === null && props.message.runId) {
                   sendUserFeedback(1, "user_score");
                   animateButton("upButton");
-                  setFeedbackColor("border-4 border-green-300");
+                  setFeedbackColor("border-4 border-primary.mint");
                 } else {
                   toast.error("You have already provided your feedback.");
                 }
@@ -335,12 +431,12 @@ export function ChatMessageBubble(props: {
               ref={downButtonRef}
               size="sm"
               variant="outline"
-              colorScheme={feedback === null ? "red" : "gray"}
+              colorScheme={feedback === null ? "primary.red" : "gray"} // Use the company red color
               onClick={() => {
                 if (feedback === null && props.message.runId) {
                   sendUserFeedback(0, "user_score");
                   animateButton("downButton");
-                  setFeedbackColor("border-4 border-red-300");
+                  setFeedbackColor("border-4 border-primary.red");
                 } else {
                   toast.error("You have already provided your feedback.");
                 }
@@ -352,21 +448,22 @@ export function ChatMessageBubble(props: {
             <Button
               size="sm"
               variant="outline"
-              colorScheme={runId === null ? "blue" : "gray"}
+              colorScheme={runId === null ? "primary.blue" : "gray"} // Use company blue for trace button
               onClick={(e) => {
                 e.preventDefault();
                 viewTrace();
               }}
               isLoading={traceIsLoading}
               loadingText="🔄"
-              color="white"
             >
-              🦜🛠️ View trace
+              🛠️ View trace
             </Button>
+
           </HStack>
         )}
-
+  
       {!isUser && <Divider mt={4} mb={4} />}
     </VStack>
   );
+
 }

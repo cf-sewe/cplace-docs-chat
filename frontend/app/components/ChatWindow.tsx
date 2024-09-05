@@ -8,10 +8,6 @@ import { applyPatch } from "@langchain/core/utils/json_patch";
 import { EmptyState } from "./EmptyState";
 import { ChatMessageBubble, Message } from "./ChatMessageBubble";
 import { AutoResizeTextarea } from "./AutoResizeTextarea";
-import { marked } from "marked";
-import { Renderer } from "marked";
-import hljs from "highlight.js";
-import "highlight.js/styles/gradient-dark.css";
 
 import "react-toastify/dist/ReactToastify.css";
 import {
@@ -21,13 +17,11 @@ import {
   InputGroup,
   InputRightElement,
   Spinner,
+  Text,
 } from "@chakra-ui/react";
 import { ArrowUpIcon } from "@chakra-ui/icons";
 import { Select, Link } from "@chakra-ui/react";
-import { Source } from "./SourceBubble";
 import { apiBaseUrl } from "../utils/constants";
-
-const defaultLlmValue = "openai_gpt_3_5_turbo"
 
 export function ChatWindow(props: { conversationId: string }) {
   const conversationId = props.conversationId;
@@ -38,17 +32,6 @@ export function ChatWindow(props: { conversationId: string }) {
   const [messages, setMessages] = useState<Array<Message>>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  // Handle the case when searchParams is null
-  const llmInitial = searchParams ? searchParams.get("llm") : null;
-  const [llm, setLlm] = useState(llmInitial ?? defaultLlmValue);
-  const [llmIsLoading, setLlmIsLoading] = useState(true);
-  // Update effect to handle null searchParams safely
-  useEffect(() => {
-    if (searchParams) {
-      setLlm(searchParams.get("llm") ?? defaultLlmValue);
-    }
-    setLlmIsLoading(false);
-  }, [searchParams]);
 
   const [chatHistory, setChatHistory] = useState<
     { human: string; ai: string }[]
@@ -66,121 +49,114 @@ export function ChatWindow(props: { conversationId: string }) {
     setInput("");
     setMessages((prevMessages) => [
       ...prevMessages,
-      { id: Math.random().toString(), content: messageValue, role: "user" },
+      { id: Math.random().toString(), content: messageValue, type: "human" },
     ]);
     setIsLoading(true);
 
-    let accumulatedMessage = "";
-    let runId: string | undefined = undefined;
-    let sources: Source[] | undefined = undefined;
-    let messageIndex: number | null = null;
-
-    let renderer = new Renderer();
-    renderer.paragraph = (text) => {
-      return text + "\n";
-    };
-    renderer.list = (text) => {
-      return `${text}\n\n`;
-    };
-    renderer.listitem = (text) => {
-      return `\n• ${text}`;
-    };
-    renderer.code = (code, language) => {
-      const validLanguage = hljs.getLanguage(language || "")
-        ? language
-        : "plaintext";
-      const highlightedCode = hljs.highlight(
-        validLanguage || "plaintext",
-        code,
-      ).value;
-      return `<pre class="highlight bg-gray-700" style="padding: 5px; border-radius: 5px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; max-width: 100%; display: block; line-height: 1.2"><code class="${language}"; font-size: 12px; ">${highlightedCode}</code></pre>`;
-    };
-    marked.setOptions({ renderer });
     try {
       const sourceStepName = "FindDocs";
-      let streamedResponse: Record<string, any> = {};
+      let streamedResponse: Record<string, any> = {}; // To accumulate the streamed response
+      let accumulatedMessage = ""; // This will accumulate the AI's streamed response
+      let sources: { url: string; title: string }[] = []; // Array to store sources
+      let messageIndex: number | null = null;
+      let runId: string | undefined = undefined;
+
       const remoteChain = new RemoteRunnable({
-        url: apiBaseUrl + "/chat",
+        url: apiBaseUrl + "/chat", // Ensure the correct API URL
         options: {
-          timeout: 120000,
+          timeout: 120000, // Timeout of 120 seconds
         },
       });
-      const llmDisplayName = llm ?? "openai_gpt_3_5_turbo";
-      const streamLog = await remoteChain.streamLog(
+
+      // Start streaming the AI response
+      const streamLog = remoteChain.streamLog(
         {
-          question: messageValue,
-          chat_history: chatHistory,
+          question: messageValue, // The user's question or input
+          chat_history: chatHistory, // The conversation history sent to the backend
         },
         {
-          configurable: {
-            llm: llmDisplayName,
-          },
-          tags: ["model:" + llmDisplayName],
+          configurable: {},
+          tags: [],
           metadata: {
-            conversation_id: conversationId,
-            llm: llmDisplayName,
+            conversation_id: conversationId, // Metadata for conversation ID
           },
         },
         {
-          includeNames: [sourceStepName],
-        },
-      );
-      for await (const chunk of streamLog) {
-        streamedResponse = applyPatch(streamedResponse, chunk.ops, undefined, false).newDocument;
-        if (
-          Array.isArray(
-            streamedResponse?.logs?.[sourceStepName]?.final_output?.output,
-          )
-        ) {
-          sources = streamedResponse.logs[
-            sourceStepName
-          ].final_output.output.map((doc: Record<string, any>) => ({
-            url: doc.metadata.source,
-            title: doc.metadata.title,
-          }));
+          includeNames: [sourceStepName], // Request that includes specific logs
         }
+      );
+
+      // For each chunk in the stream, handle the patch and update the message
+      for await (const chunk of streamLog) {
+        // Log the received chunk for debugging
+        //console.log("Received chunk:", chunk);
+
+        // Apply JSON patch updates to the streamed response
+        streamedResponse = applyPatch(streamedResponse, chunk.ops, undefined, false).newDocument;
+
+        // If the response contains sources, update them
+        if (Array.isArray(streamedResponse?.logs?.[sourceStepName]?.final_output?.output)) {
+          sources = streamedResponse.logs[sourceStepName].final_output.output.map(
+            (doc: Record<string, any>) => ({
+              url: doc.metadata.source,
+              title: doc.metadata.title,
+            })
+          );
+        }
+
+        // Capture the run ID if it is available
         if (streamedResponse.id !== undefined) {
           runId = streamedResponse.id;
         }
-        if (Array.isArray(streamedResponse?.streamed_output)) {
-          accumulatedMessage = streamedResponse.streamed_output.join("");
-        }
-        const parsedResult = await marked.parse(accumulatedMessage);
 
-        setMessages((prevMessages) => {
-          let newMessages = [...prevMessages];
-          if (
-            messageIndex === null ||
-            newMessages[messageIndex] === undefined
-          ) {
-            messageIndex = newMessages.length;
-            newMessages.push({
-              id: Math.random().toString(),
-              content: parsedResult.trim(),
-              runId: runId,
-              sources: sources,
-              role: "assistant",
-            });
-          } else if (newMessages[messageIndex] !== undefined) {
-            newMessages[messageIndex].content = parsedResult.trim();
-            newMessages[messageIndex].runId = runId;
-            newMessages[messageIndex].sources = sources;
-          }
-          return newMessages;
-        });
+        // Check if the streamed_output is an array
+        if (Array.isArray(streamedResponse?.streamed_output)) {
+          // Concatenate the valid chunks to the accumulated message (raw text)
+          accumulatedMessage = streamedResponse?.streamed_output.join("");
+
+          // Update the message state to display raw streaming text (no markdown)
+          setMessages((prevMessages) => {
+            let newMessages = [...prevMessages];
+
+            // If it's the first chunk, create a new message
+            if (messageIndex === null || newMessages[messageIndex] === undefined) {
+              messageIndex = newMessages.length;
+              newMessages.push({
+                id: Math.random().toString(),
+                content: accumulatedMessage,
+                runId: runId,
+                sources: sources,
+                type: "ai",
+              });
+            } else if (newMessages[messageIndex] !== undefined) {
+              // If more chunks are received, update the existing message with raw text
+              newMessages[messageIndex].content = streamedResponse?.streamed_output.join("");
+              newMessages[messageIndex].runId = runId;
+              newMessages[messageIndex].sources = sources;
+            }
+            return newMessages;
+          });
+        }
       }
+
+      // Update the chat history once the streaming is complete
       setChatHistory((prevChatHistory) => [
         ...prevChatHistory,
         { human: messageValue, ai: accumulatedMessage },
       ]);
+
+      // Stop the loading indicator
       setIsLoading(false);
+
     } catch (e) {
-      setMessages((prevMessages) => prevMessages.slice(0, -1));
-      setIsLoading(false);
-      setInput(messageValue);
-      throw e;
+      // Handle errors and rollback
+      console.error("Error during streaming:", e);  // Log any error for debugging
+      setMessages((prevMessages) => prevMessages.slice(0, -1));  // Remove the last AI message
+      setIsLoading(false);  // Stop the loading indicator
+      setInput(messageValue);  // Restore the input for retry
+      throw e;  // Rethrow the error for further handling
     }
-  };
+  }
 
   const sendInitialQuestion = async (question: string) => {
     await sendMessage(question);
@@ -203,56 +179,45 @@ export function ChatWindow(props: { conversationId: string }) {
 
   return (
     <div className="flex flex-col items-center p-8 rounded grow max-h-full">
-      <Flex
-        direction={"column"}
-        alignItems={"center"}
-        marginTop={messages.length > 0 ? "" : "64px"}
+    <Flex
+      direction="column"
+      alignItems="center"
+      marginTop={messages.length > 0 ? "0" : "64px"}
+    >
+    <Heading
+      fontSize={messages.length > 0 ? "2xl" : "3xl"}
+      fontWeight="medium"
+      mb={1}
+      color="primary.blue"
+    >
+      cplace Knowledge Chatbot
+    </Heading>
+
+    {messages.length > 0 ? (
+      <Text fontSize="md" fontWeight="normal" mb={1} color="secondary.magenta">
+        Got feedback? We'd love to hear it!
+      </Text>
+    ) : (
+      <Text
+        fontSize="xl"
+        fontWeight="normal"
+        mt="10px"
+        textAlign="center"
+        color="secondary.orange"
       >
-        <Heading
-          fontSize={messages.length > 0 ? "2xl" : "3xl"}
-          fontWeight={"medium"}
-          mb={1}
-        >
-          cplace Docs Chat
-        </Heading>
-        {messages.length > 0 ? (
-          <Heading fontSize="md" fontWeight={"normal"} mb={1}>
-            We appreciate feedback!
-          </Heading>
-        ) : (
-          <Heading
-            fontSize="xl"
-            fontWeight={"normal"}
-            marginTop={"10px"}
-            textAlign={"center"}
-          >
-            Ask me anything about cplace&apos;s{" "}
-            <Link href="https://docs.cplace.io/">
-              official documentation!
-            </Link>
-          </Heading>
-        )}
-        <div className="flex flex-wrap items-center mt-4">
-          <div className="flex items-center mb-2">
-            <span className="shrink-0 mr-2">Powered by</span>
-            {llmIsLoading ? (
-              <Spinner className="my-2"></Spinner>
-            ) : (
-              <Select
-                value={llm}
-                onChange={(e) => {
-                  insertUrlParam("llm", e.target.value);
-                  setLlm(e.target.value);
-                }}
-                width={"240px"}
-              >
-                <option value="openai_gpt_3_5_turbo">GPT-3.5-Turbo</option>
-                <option value="openai_gpt_4o">GPT-4o</option>
-              </Select>
-            )}
-          </div>
-        </div>
-      </Flex>
+        Ask me anything about cplace's{" "}
+        <Link href="https://docs.cplace.io/" isExternal color="secondary.orangeLight">
+          official documentation
+        </Link>{" "}
+        or the{" "}
+        <Link href="https://discuss.cplace.io/" isExternal color="secondary.orangeLight">
+          Discuss Forum
+        </Link>
+        !
+      </Text>
+    )}
+    </Flex>
+
       <div
         className="flex flex-col-reverse w-full mb-2 overflow-auto"
         ref={messageContainerRef}

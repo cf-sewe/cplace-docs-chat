@@ -5,10 +5,11 @@ import { ChatWindow } from "./components/ChatWindow";
 import { ToastContainer } from "react-toastify";
 
 import { ChakraProvider } from "@chakra-ui/react";
+import theme from "./theme";
 
 export default function Home() {
   return (
-    <ChakraProvider>
+    <ChakraProvider theme={theme}>
       <ToastContainer />
       <ChatWindow conversationId={uuidv4()}></ChatWindow>
     </ChakraProvider>

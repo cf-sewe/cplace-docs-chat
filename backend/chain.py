@@ -46,7 +46,6 @@ def format_docs(docs: Sequence[lc_docs.Document]) -> str:
 
 def serialize_history(request) -> List[lc_msgs.BaseMessage]:
     """Convert chat history into a list of message objects, preserving the original order."""
-    print("Type of request:", type(request))
     if isinstance(request, dict):
         # If input is dictionary, convert to ChatRequest object
         request = ChatRequest(**request)
@@ -124,7 +123,7 @@ def create_chain(
 llm = AzureChatOpenAI(
     azure_deployment="gpt-4o-mini",
     model_name="gpt-4o-mini",
-    model_version="2024-06-01",
+    model_version="2024-07-18",
     temperature=0.01,
     streaming=True,
     timeout=120,
