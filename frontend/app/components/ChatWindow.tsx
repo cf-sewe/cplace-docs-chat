@@ -195,7 +195,7 @@ export function ChatWindow(props: { conversationId: string }) {
 
     {messages.length > 0 ? (
       <Text fontSize="md" fontWeight="normal" mb={1} color="secondary.magenta">
-        Got feedback? We'd love to hear it!
+        Got feedback? We&apos;d love to hear it!
       </Text>
     ) : (
       <Text
@@ -205,7 +205,7 @@ export function ChatWindow(props: { conversationId: string }) {
         textAlign="center"
         color="secondary.orange"
       >
-        Ask me anything about cplace's{" "}
+        Ask me anything about cplace&apos;s{" "}
         <Link href="https://docs.cplace.io/" isExternal color="secondary.orangeLight">
           official documentation
         </Link>{" "}
