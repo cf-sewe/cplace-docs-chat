@@ -52,7 +52,7 @@ RUN set -e; \
   mkdir .next; \
   chown nextjs:nodejs .next
 
-COPY --from=builder  --chown=nextjs:nodejs /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 
 # Automatically leverage output traces to reduce image size
 # https://nextjs.org/docs/advanced-features/output-file-tracing

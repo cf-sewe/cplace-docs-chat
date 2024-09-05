@@ -26,12 +26,9 @@
     "autoprefixer": "^10.4.20",
     "dompurify": "^3.0.8",
     "emoji-blast": "^0.10.0",
-    "eslint": "^9.9.1",
-    "eslint-config-next": "^14.2.7",
     "framer-motion": "^11.5.2",
-    "graphql": "^16.8.1",
     "highlight.js": "^11.8.0",
-    "langsmith": "^0.1.23",
+    "langsmith": "^0.1.51",
     "marked": "^14.1.1",
     "marked-highlight": "^2.1.4",
     "next": "^14.2.7",
@@ -44,6 +41,8 @@
     "typescript": "^5.5.4"
   },
   "devDependencies": {
+    "eslint": "^8.56.0",
+    "eslint-config-next": "^14.2.8",
     "prettier": "^3.0.3"
   }
 }
