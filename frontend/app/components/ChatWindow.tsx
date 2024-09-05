@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { RemoteRunnable } from "@langchain/core/runnables/remote";
 import { applyPatch } from "@langchain/core/utils/json_patch";
 
@@ -25,9 +24,6 @@ import { apiBaseUrl } from "../utils/constants";
 
 export function ChatWindow(props: { conversationId: string }) {
   const conversationId = props.conversationId;
-
-  const searchParams = useSearchParams();
-
   const messageContainerRef = useRef<HTMLDivElement | null>(null);
   const [messages, setMessages] = useState<Array<Message>>([]);
   const [input, setInput] = useState("");
@@ -160,21 +156,6 @@ export function ChatWindow(props: { conversationId: string }) {
 
   const sendInitialQuestion = async (question: string) => {
     await sendMessage(question);
-  };
-
-  const insertUrlParam = (key: string, value?: string) => {
-    if (window.history.pushState) {
-      const searchParams = new URLSearchParams(window.location.search);
-      searchParams.set(key, value ?? "");
-      const newurl =
-        window.location.protocol +
-        "//" +
-        window.location.host +
-        window.location.pathname +
-        "?" +
-        searchParams.toString();
-      window.history.pushState({ path: newurl }, "", newurl);
-    }
   };
 
   return (
