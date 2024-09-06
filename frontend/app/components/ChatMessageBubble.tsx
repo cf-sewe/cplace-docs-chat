@@ -65,22 +65,24 @@ const filterSources = (sources: Source[]) => {
 const markedRenderer = {
   useNewRenderer: true,
   renderer: {
-    paragraph({ tokens }: { tokens: any }) {
-      return `${tokens[0].text}\n`;
+    paragraph({ tokens }: { tokens: any[] }) {
+      // Iterate over all tokens and concatenate their text
+      const paragraphText = tokens.map((token) => token.text).join('');
+      const parsed = marked.parseInline(paragraphText, { async: false });
+      return `${parsed}\n`;
     },
     listitem({ text }: { text: string }) {
-      const parsed = marked.parseInline(text, {async: false});
+      const parsed = marked.parseInline(text, { async: false });
       return `➤ ${parsed}\n`;
     },
     code({ text, lang, escaped }: { text: string; lang?: string; escaped?: boolean }) {
-      //console.log("code", text, lang, escaped);
       // Ensure code does not have a trailing newline
       const code = text.replace(/\n$/, '') + '\n';
 
       // If a language is specified, return the highlighted code but without the <pre> and <code> tags
       const highlightedCode = hljs.highlight(code, { language: lang || 'plaintext' }).value;
       return `<div class="highlighted-code" style="background: #d2d6d6; padding: 8px; border-radius: 5px; overflow-x: auto; font-family: monospace;">${highlightedCode}</div>\n`;
-    }
+    },
   },
 };
 
