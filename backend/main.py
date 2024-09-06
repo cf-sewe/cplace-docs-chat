@@ -20,6 +20,7 @@ def print_env_variables():
         "ELASTICSEARCH_URL": False,
         "ELASTICSEARCH_API_KEY": True,
         "ELASTICSEARCH_INDEX_NAME": False,
+        "DISCUSS_ES_INDEX_NAME": False,
         "AZURE_OPENAI_ENDPOINT": False,
         "AZURE_OPENAI_API_KEY": True,
         "LANGCHAIN_TRACING_V2": False,

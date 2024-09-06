@@ -21,26 +21,27 @@ class ChatRequest(lc_pydantic.BaseModel):
     chat_history: Optional[List[Dict[str, str]]]
 
 
-def get_retriever() -> lc_retrievers.BaseRetriever:
-    """Set up and return an Elasticsearch-based document retriever."""
-    es_client = Elasticsearch(
+def get_retriever(index_name: str) -> lc_retrievers.BaseRetriever:
+    """Create a retriever for a specific Elasticsearch index."""
+    es_client: Elasticsearch = Elasticsearch(
         hosts=os.getenv("ELASTICSEARCH_URL"),
         api_key=os.getenv("ELASTICSEARCH_API_KEY"),
         request_timeout=60,
         max_retries=2,
     )
-    es_store = ElasticsearchStore(
+    es_store: ElasticsearchStore = ElasticsearchStore(
         es_connection=es_client,
         embedding=AzureOpenAIEmbeddings(azure_deployment="embedding", timeout=60.0),
-        index_name=os.getenv("ELASTICSEARCH_INDEX_NAME"),
+        index_name=index_name,
     )
-    return es_store.as_retriever(search_kwargs={"k": 6})
+    return es_store.as_retriever(search_kwargs={"k": 10})
 
 
-def format_docs(docs: Sequence[lc_docs.Document]) -> str:
-    """Format document sequence into doc blocks."""
+def format_docs(docs: Sequence) -> str:
+    """Format the documents retrieved for easier parsing by the model."""
     return "\n".join(
-        f"<doc id='{i}'>{doc.page_content}</doc>" for i, doc in enumerate(docs)
+        f"<doc id='{i}' source='{doc.metadata.get('source', 'unknown')}'>{doc.page_content}</doc>"
+        for i, doc in enumerate(docs)
     )
 
 
@@ -61,19 +62,32 @@ def serialize_history(request) -> List[lc_msgs.BaseMessage]:
     return converted_chat_history
 
 
+
 def create_retriever_chain(
-    llm: lc_models.LanguageModelLike, retriever: lc_retrievers.BaseRetriever
+    llm: lc_models.LanguageModelLike, docs_retriever: lc_retrievers.BaseRetriever, discuss_retriever: lc_retrievers.BaseRetriever
 ) -> lc_runnables.Runnable:
     CONDENSE_QUESTION_PROMPT = lc_prompts.PromptTemplate.from_template(
         REPHRASE_TEMPLATE
     )
-    # Note: Always use an efficient language model for the condense question chain
+    # Condense question prompt chain
     condense_question_chain = (
         CONDENSE_QUESTION_PROMPT | llm | lc_parsers.StrOutputParser()
     ).with_config(
         run_name="CondenseQuestion",
     )
-    conversation_chain = condense_question_chain | retriever
+
+    # Run both retrievers in parallel
+    retrievers_parallel = lc_runnables.RunnableParallel({"docs_results": docs_retriever, "discuss_results": discuss_retriever})
+    
+    # Combine results from both retrievers
+    def merge_retriever_results(results):
+        docs_results = results.get("docs_results", [])
+        discuss_results = results.get("discuss_results", [])
+        return docs_results + discuss_results
+
+    # Conversation chain with parallel retriever execution and result merging
+    conversation_chain = condense_question_chain | retrievers_parallel | lc_runnables.RunnableLambda(merge_retriever_results)
+    
     return lc_runnables.RunnableBranch(
         (
             lc_runnables.RunnableLambda(
@@ -85,17 +99,18 @@ def create_retriever_chain(
             lc_runnables.RunnableLambda(itemgetter("question")).with_config(
                 run_name="Itemgetter:question"
             )
-            | retriever
+            | retrievers_parallel
+            | lc_runnables.RunnableLambda(merge_retriever_results)
         ).with_config(run_name="RetrievalChainWithNoHistory"),
     ).with_config(run_name="RouteDependingOnChatHistory")
 
-
 def create_chain(
-    llm: lc_models.LanguageModelLike, retriever: lc_retrievers.BaseRetriever
+    llm: lc_models.LanguageModelLike,
+    docs_retriever: lc_retrievers.BaseRetriever,
+    discuss_retriever: lc_retrievers.BaseRetriever,
 ) -> lc_runnables.Runnable:
     retriever_chain = create_retriever_chain(
-        llm,
-        retriever,
+        llm, docs_retriever, discuss_retriever
     ).with_config(run_name="FindDocs")
     context = (
         lc_runnables.RunnablePassthrough.assign(docs=retriever_chain)
@@ -129,4 +144,9 @@ llm = AzureChatOpenAI(
     timeout=120,
 )
 
-answer_chain = create_chain(llm, get_retriever())
+# Corrected call to create_chain with both retrievers
+answer_chain = create_chain(
+    llm,
+    get_retriever(os.getenv("ELASTICSEARCH_INDEX_NAME")),
+    get_retriever(os.getenv("DISCUSS_ES_INDEX_NAME")),
+)
