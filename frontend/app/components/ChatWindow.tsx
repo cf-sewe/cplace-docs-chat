@@ -221,6 +221,7 @@ export function ChatWindow(props: { conversationId: string }) {
       </div>
       <InputGroup size="md" alignItems={"center"} width="100%" minW="600px">
         <AutoResizeTextarea
+          autoFocus
           value={input}
           maxRows={5}
           marginRight={"56px"}

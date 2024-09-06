@@ -26,15 +26,18 @@ def get_retriever(index_name: str) -> lc_retrievers.BaseRetriever:
     es_client: Elasticsearch = Elasticsearch(
         hosts=os.getenv("ELASTICSEARCH_URL"),
         api_key=os.getenv("ELASTICSEARCH_API_KEY"),
-        request_timeout=60,
+        request_timeout=10,
         max_retries=2,
     )
     es_store: ElasticsearchStore = ElasticsearchStore(
         es_connection=es_client,
-        embedding=AzureOpenAIEmbeddings(azure_deployment="embedding", timeout=60.0),
+        embedding=AzureOpenAIEmbeddings(azure_deployment="embedding", timeout=10.0),
         index_name=index_name,
     )
-    return es_store.as_retriever(search_kwargs={"k": 10})
+    return es_store.as_retriever(
+        search_type="similarity_score_threshold",
+        search_kwargs={"k": 3, "score_threshold": 0.7},
+    )
 
 
 def format_docs(docs: Sequence) -> str:
@@ -62,9 +65,10 @@ def serialize_history(request) -> List[lc_msgs.BaseMessage]:
     return converted_chat_history
 
 
-
 def create_retriever_chain(
-    llm: lc_models.LanguageModelLike, docs_retriever: lc_retrievers.BaseRetriever, discuss_retriever: lc_retrievers.BaseRetriever
+    llm: lc_models.LanguageModelLike,
+    docs_retriever: lc_retrievers.BaseRetriever,
+    discuss_retriever: lc_retrievers.BaseRetriever,
 ) -> lc_runnables.Runnable:
     CONDENSE_QUESTION_PROMPT = lc_prompts.PromptTemplate.from_template(
         REPHRASE_TEMPLATE
@@ -77,8 +81,10 @@ def create_retriever_chain(
     )
 
     # Run both retrievers in parallel
-    retrievers_parallel = lc_runnables.RunnableParallel({"docs_results": docs_retriever, "discuss_results": discuss_retriever})
-    
+    retrievers_parallel = lc_runnables.RunnableParallel(
+        {"docs_results": docs_retriever, "discuss_results": discuss_retriever}
+    )
+
     # Combine results from both retrievers
     def merge_retriever_results(results):
         docs_results = results.get("docs_results", [])
@@ -86,8 +92,12 @@ def create_retriever_chain(
         return docs_results + discuss_results
 
     # Conversation chain with parallel retriever execution and result merging
-    conversation_chain = condense_question_chain | retrievers_parallel | lc_runnables.RunnableLambda(merge_retriever_results)
-    
+    conversation_chain = (
+        condense_question_chain
+        | retrievers_parallel
+        | lc_runnables.RunnableLambda(merge_retriever_results)
+    )
+
     return lc_runnables.RunnableBranch(
         (
             lc_runnables.RunnableLambda(
@@ -103,6 +113,7 @@ def create_retriever_chain(
             | lc_runnables.RunnableLambda(merge_retriever_results)
         ).with_config(run_name="RetrievalChainWithNoHistory"),
     ).with_config(run_name="RouteDependingOnChatHistory")
+
 
 def create_chain(
     llm: lc_models.LanguageModelLike,
@@ -141,7 +152,7 @@ llm = AzureChatOpenAI(
     model_version="2024-07-18",
     temperature=0.01,
     streaming=True,
-    timeout=120,
+    timeout=60,
 )
 
 # Corrected call to create_chain with both retrievers
