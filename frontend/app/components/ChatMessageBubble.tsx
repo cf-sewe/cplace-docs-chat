@@ -66,7 +66,6 @@ const markedRenderer = {
   useNewRenderer: true,
   renderer: {
     paragraph({ tokens }: { tokens: any }) {
-      console.log("paragraph", tokens);
       return `${tokens[0].text}\n`;
     },
     listitem({ text }: { text: string }) {
@@ -344,7 +343,7 @@ export function ChatMessageBubble(props: {
                 fontSize="lg"
                 fontWeight={"medium"}
                 mb={1}
-                color={"primary.blue"} // Update the color to use the company primary blue
+                color={"primary.blue"}
                 paddingBottom={"10px"}
               >
                 Sources

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
+
 import { RemoteRunnable } from "@langchain/core/runnables/remote";
 import { applyPatch } from "@langchain/core/utils/json_patch";
 
@@ -159,46 +160,45 @@ export function ChatWindow(props: { conversationId: string }) {
   };
 
   return (
-    <div className="flex flex-col items-center p-8 rounded grow max-h-full">
-    <Flex
-      direction="column"
-      alignItems="center"
-      marginTop={messages.length > 0 ? "0" : "64px"}
-    >
-    <Heading
-      fontSize={messages.length > 0 ? "2xl" : "3xl"}
-      fontWeight="medium"
-      mb={1}
-      color="primary.blue"
-    >
-      cplace Knowledge Chatbot
-    </Heading>
-
-    {messages.length > 0 ? (
-      <Text fontSize="md" fontWeight="normal" mb={1} color="secondary.magenta">
-        Got feedback? We&apos;d love to hear it!
-      </Text>
-    ) : (
-      <Text
-        fontSize="xl"
-        fontWeight="normal"
-        mt="10px"
-        textAlign="center"
-        color="secondary.orange"
+    <div className="flex flex-col items-center p-8 rounded grow max-h-full" style={{ maxWidth: '1280px', margin: '0 auto' }}>
+      <Flex
+        direction="column"
+        alignItems="center"
+        marginTop={messages.length > 0 ? "0" : "64px"}
       >
-        Ask me anything about cplace&apos;s{" "}
-        <Link href="https://docs.cplace.io/" isExternal color="secondary.orangeLight">
-          official documentation
-        </Link>{" "}
-        or the{" "}
-        <Link href="https://discuss.cplace.io/" isExternal color="secondary.orangeLight">
-          Discuss Forum
-        </Link>
-        !
-      </Text>
-    )}
-    </Flex>
-
+        <Heading
+          fontSize={messages.length > 0 ? "2xl" : "3xl"}
+          fontWeight="medium"
+          mb={1}
+          color="primary.blue"
+        >
+          cplace Knowledge Chatbot
+        </Heading>
+  
+        {messages.length > 0 ? (
+          <Text fontSize="md" fontWeight="normal" mb={1} color="secondary.magenta" style={{ color: '#4a4a4a' }}>
+            Got feedback? We&apos;d love to hear it!
+          </Text>
+        ) : (
+          <>
+            <Text
+              fontSize="xl"
+              fontWeight="normal"
+              mt="10px"
+              textAlign="center"
+              textColor="gray.600"
+            >
+              Ask me anything about cplace and get instant answers!
+            </Text>
+  
+            {/* Chakra Text component used for the disclaimer */}
+            <Text fontSize="sm" mt="10px" color="gray.500" textAlign="justify" maxWidth="800px">
+              Note on the use of the chatbot: Our new AI-based chatbot is currently in the testing phase. While it is designed to help you answer your questions about the cplace platform, the answers may vary in quality and accuracy. Please check the sources it provides and also consult the classic index-based search in our Knowledge Base if necessary.
+            </Text>
+          </>
+        )}
+      </Flex>
+  
       <div
         className="flex flex-col-reverse w-full mb-2 overflow-auto"
         ref={messageContainerRef}
@@ -219,7 +219,7 @@ export function ChatWindow(props: { conversationId: string }) {
           <EmptyState onChoice={sendInitialQuestion} />
         )}
       </div>
-      <InputGroup size="md" alignItems={"center"}>
+      <InputGroup size="md" alignItems={"center"} width="100%" minW="600px">
         <AutoResizeTextarea
           value={input}
           maxRows={5}
@@ -249,7 +249,7 @@ export function ChatWindow(props: { conversationId: string }) {
           />
         </InputRightElement>
       </InputGroup>
-
+  
       {messages.length === 0 ? (
         <footer className="flex justify-center absolute bottom-8">
           <a
