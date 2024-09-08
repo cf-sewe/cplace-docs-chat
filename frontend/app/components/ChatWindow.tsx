@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 import { RemoteRunnable } from "@langchain/core/runnables/remote";
 import { applyPatch } from "@langchain/core/utils/json_patch";
+import DOMPurify from "dompurify";
 
 import { EmptyState } from "./EmptyState";
 import { ChatMessageBubble, Message } from "./ChatMessageBubble";
@@ -59,9 +60,9 @@ export function ChatWindow(props: { conversationId: string }) {
       let runId: string | undefined = undefined;
 
       const remoteChain = new RemoteRunnable({
-        url: apiBaseUrl + "/chat", // Ensure the correct API URL
+        url: apiBaseUrl + "/chat",
         options: {
-          timeout: 120000, // Timeout of 120 seconds
+          timeout: 60_000,
         },
       });
 
@@ -75,7 +76,7 @@ export function ChatWindow(props: { conversationId: string }) {
           configurable: {},
           tags: [],
           metadata: {
-            conversation_id: conversationId, // Metadata for conversation ID
+            conversation_id: conversationId,
           },
         },
         {
@@ -96,7 +97,7 @@ export function ChatWindow(props: { conversationId: string }) {
           sources = streamedResponse.logs[sourceStepName].final_output.output.map(
             (doc: Record<string, any>) => ({
               url: doc.metadata.source,
-              title: doc.metadata.title,
+              title: DOMPurify.sanitize(doc.metadata.title, { ALLOWED_TAGS: [] }),
             })
           );
         }

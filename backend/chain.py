@@ -2,9 +2,8 @@ import os
 from operator import itemgetter
 from typing import Dict, List, Optional, Sequence
 
-from constants import REPHRASE_TEMPLATE, RESPONSE_TEMPLATE
+from constants import REPHRASE_TEMPLATE, RESPONSE_TEMPLATE, RETRIEVER_CONFIG
 from elasticsearch import Elasticsearch
-from langchain_core import documents as lc_docs
 from langchain_core import language_models as lc_models
 from langchain_core import messages as lc_msgs
 from langchain_core import output_parsers as lc_parsers
@@ -35,8 +34,11 @@ def get_retriever(index_name: str) -> lc_retrievers.BaseRetriever:
         index_name=index_name,
     )
     return es_store.as_retriever(
-        search_type="similarity_score_threshold",
-        search_kwargs={"k": 3, "score_threshold": 0.7},
+        search_type=RETRIEVER_CONFIG["parameters"]["search_type"],
+        search_kwargs={
+            "k": RETRIEVER_CONFIG["parameters"]["k"],
+            "score_threshold": RETRIEVER_CONFIG["parameters"]["score_threshold"]
+        }
     )
 
 
@@ -155,7 +157,6 @@ llm = AzureChatOpenAI(
     timeout=60,
 )
 
-# Corrected call to create_chain with both retrievers
 answer_chain = create_chain(
     llm,
     get_retriever(os.getenv("ELASTICSEARCH_INDEX_NAME")),

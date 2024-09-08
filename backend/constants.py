@@ -35,3 +35,27 @@ Chat History:
 {chat_history}
 Follow Up Input: {question}
 Standalone Question:"""
+
+
+# Map for retriever configuration
+RETRIEVER_CONFIG = {
+    # The algorithm used for the retrieval process. 
+    # In this case, we're using Elasticsearch as the retrieval engine.
+    "algorithm": "Elasticsearch",
+
+    # Parameters for controlling the behavior of the retrieval process.
+    "parameters": {
+        # The type of search performed by the retriever.
+        # "similarity_score_threshold" indicates that documents will be retrieved based on
+        # their similarity to the query, with a minimum threshold for relevance.
+        "search_type": "similarity_score_threshold",
+
+        # The number of top documents to retrieve based on similarity scores.
+        # This limits the results to the top 4 most relevant documents.
+        "k": 4,
+
+        # The minimum similarity score threshold for retrieved documents.
+        # Only documents with a similarity score above 0.65 will be considered relevant.
+        "score_threshold": 0.65
+    }
+}
