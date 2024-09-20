@@ -8,14 +8,14 @@ from langchain_core import language_models as lc_models
 from langchain_core import messages as lc_msgs
 from langchain_core import output_parsers as lc_parsers
 from langchain_core import prompts as lc_prompts
-from langchain_core import pydantic_v1 as lc_pydantic
+from pydantic import BaseModel
 from langchain_core import retrievers as lc_retrievers
 from langchain_core import runnables as lc_runnables
 from langchain_elasticsearch import ElasticsearchStore
 from langchain_openai import AzureChatOpenAI, AzureOpenAIEmbeddings
 
 
-class ChatRequest(lc_pydantic.BaseModel):
+class ChatRequest(BaseModel):
     question: str
     chat_history: Optional[List[Dict[str, str]]]
 
